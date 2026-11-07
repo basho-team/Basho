@@ -6,6 +6,7 @@ variável obrigatória faltar ou for inválida, ``load_settings`` levanta
 """
 
 from functools import lru_cache
+from uuid import UUID
 
 from pydantic import AnyHttpUrl, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,7 +33,7 @@ class Settings(BaseSettings):
     featherless_base_url: AnyHttpUrl
     checker_model: str
     github_token: SecretStr
-    tenant_id: str
+    tenant_id: UUID
 
 
 def _describe_errors(error: ValidationError) -> str:

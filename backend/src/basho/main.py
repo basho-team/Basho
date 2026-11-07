@@ -30,7 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> HealthResponse:
         return HealthResponse(status="ok")
 
-    get_logger(__name__).info("app_created", tenant_id=resolved.tenant_id)
+    get_logger(__name__).info("app_created", tenant_id=str(resolved.tenant_id))
     return app
 
 

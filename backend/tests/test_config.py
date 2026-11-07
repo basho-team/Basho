@@ -1,5 +1,7 @@
 """Testes de validação de configuração no startup."""
 
+from uuid import UUID
+
 import pytest
 
 from basho.config import ConfigError, load_settings
@@ -49,3 +51,25 @@ def test_settings_repr_masks_secrets(valid_env: dict[str, str]) -> None:
     assert valid_env["ANTHROPIC_API_KEY"] not in rendered
     assert valid_env["GITHUB_TOKEN"] not in rendered
     assert valid_env["DATABASE_URL"] not in rendered
+
+
+def test_tenant_id_is_parsed_as_uuid(valid_env: dict[str, str]) -> None:
+    # Arrange
+    expected = UUID(valid_env["TENANT_ID"])
+
+    # Act
+    settings = load_settings()
+
+    # Assert
+    assert settings.tenant_id == expected
+
+
+def test_app_does_not_start_with_invalid_tenant_id(
+    valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange
+    monkeypatch.setenv("TENANT_ID", "not-a-uuid")
+
+    # Act / Assert
+    with pytest.raises(ConfigError, match="TENANT_ID"):
+        create_app()
