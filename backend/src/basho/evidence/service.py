@@ -105,6 +105,17 @@ class EvidenceService:
         found = await self._repository.existing_ids(tenant_id, project_id, sorted(wanted, key=str))
         return wanted - found
 
+    async def get_many(
+        self, tenant_id: UUID, project_id: UUID, ids: Iterable[UUID]
+    ) -> list[EvidenceEvent]:
+        """Eventos existentes entre ``ids``, só do tenant e do projeto (uma consulta)."""
+        await self._require_session_tenant(tenant_id)
+        wanted = sorted(set(ids), key=str)
+        if not wanted:
+            return []
+        rows = await self._repository.get_many(tenant_id, project_id, wanted)
+        return [_to_event(row) for row in rows]
+
     async def query(
         self,
         tenant_id: UUID,

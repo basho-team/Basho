@@ -16,6 +16,7 @@ Interfaces combinadas na hora 0 para que backend, agente e frontend avancem em p
 | Exemplo de artefato | `backend/tests/fixtures/activity_record_draft.json` | #9, #12, #13 |
 | Exemplo de relatório do pesquisador | `backend/tests/fixtures/research_report_draft.json` | #9, #12, #38 |
 | Persistência e API de relatórios (`report_versions`, `report_reviews`) | `backend/src/basho/reports/{schemas,service,api}.py` | #39, #42, frontend |
+| Projetos, pendências, aprovação formal e dossiê (`projects`, `pending_items`, `artifact_approvals`) | `backend/src/basho/projects/{service,api}.py`, migração `0005` | #5, #12, #13, frontend |
 
 ## 1. Evidence Ledger (ADR-0003)
 - `NewEvidenceEvent` → entrada de `EvidenceService.append`; o serviço calcula `id`, `content_hash` e `created_at`. O `content_hash` é o SHA-256 (hex minúsculo) do JSON canônico (chaves ordenadas, separadores `,`/`:`, UTF-8, sem NaN) do **envelope de conteúdo imutável** — `tenant_id`, `project_id`, `kind`, `source`, `source_ref`, `actor`, `payload`, `supersedes`, `is_synthetic` — e não apenas do payload, para que a adulteração de qualquer desses campos seja detectável. `id` e `created_at` ficam fora do hash. O envelope é montado campo a campo e versionado (`HASH_VERSION`, coluna `hash_version`).
@@ -95,6 +96,7 @@ Implementado em `basho.agent.checks` e `basho.agent.checker` (#9). Vale para `Ac
 - `POST /artifacts/{id}/approval`: só `manager`; `approve` exige `verified` sem pendência aberta além da de aprovação; `reject` vale em `verified` ou `needs_human`. Uma decisão por artefato. Grava `user_confirmation` (approve) ou `status_changed` (reject), ambos com `identity_verified: false`.
 - Identidade humana: mesmos headers do #48 (`X-Basho-User-Id`, `X-Basho-Role`, `X-Basho-Identity-Secret`, só no BFF); sem segredo configurado → 503; header inválido → 401; papel errado → 403.
 - Erros com mensagem fixa (sem detalhe interno): 404 projeto/pendência/artefato, 409 `ConflictOut`, 422 validação.
+- Persistência (migração `0005`): `projects`, `activities`, `pending_items`, `pending_answers`, `artifact_approvals`, append-only (trigger + REVOKE), `tenant_id` + RLS forçada, índices `(tenant_id, project_id, created_at)`. `basho_worker` só **lê** `pending_answers` e `artifact_approvals` (resposta e decisão são humanas). A projeção de pendências é materializada na leitura (`ON CONFLICT DO NOTHING`). Projetos/atividades são criados por `ProjectService.create_project`/`create_activity` (seed #14), sem endpoint no MVP.
 
 O frontend gera tipos a partir de `/openapi.json` e usa mocks desses schemas até #5 ficar pronta.
 
