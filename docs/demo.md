@@ -22,6 +22,21 @@ Se a pasta do front já tem `node_modules`, ele não reinstala.
 > No Windows use `python -m basho.serve` (e não `uvicorn`): o psycopg assíncrono exige
 > `SelectorEventLoop`. O `uvicorn.exe` também pode ser bloqueado por política de aplicativos.
 
+## Login (ADR-0011)
+
+A demo exige login local por função. O `demo-up.ps1` configura o login com uma senha de demonstração
+(`-DemoPassword`, padrão `basho-demo-2026`, guardada só como hash scrypt) e mapeia as contas aos
+usuários do backend. Contas fictícias, todas com a mesma senha:
+
+| Conta | Função | Vê |
+| --- | --- | --- |
+| `ana@lumen.example` | Pesquisador | seus relatórios e pendências |
+| `marina@lumen.example` | Gerente | gestão, dossiê, **Publicação** (autorizar links, gerar e publicar) |
+| `rafael@lumen.example` | Fiscal | análise fiscal |
+
+> **Abra `http://localhost:<porta>` (não `127.0.0.1`).** O login confere a origem exata, e o Next
+> monta a URL da requisição com `localhost`; pelo `127.0.0.1` o login é recusado.
+
 ## O projeto da demo
 
 **Demo — Quantização de modelos de detecção de falhas**, com duas atividades:
@@ -51,12 +66,12 @@ verificados numa pasta `BASHO`, **sem aprovação de rotina** ([ADR-0010](adr/00
 1. *Drive*: crie uma service account no Google Cloud (API do Drive ativada) e uma chave JSON.
    Defina `GOOGLE_SERVICE_ACCOUNT_JSON` com o JSON (ou o caminho do arquivo) **antes** de rodar o
    `demo-up.ps1`. **Compartilhe a pasta do Drive como Editor com o e-mail da service account**
-   (a tela Integrações mostra esse e-mail). Um link "qualquer pessoa edita" não autentica a API.
+   (a tela Publicação mostra esse e-mail). Um link "qualquer pessoa edita" não autentica a API.
 2. *Notion*: crie uma integração interna, defina `NOTION_TOKEN` e, na página, abra `•••` → Conexões e
    adicione a integração.
 3. Opcional: `GITHUB_TOKEN` real para o Basho ler commits e PRs do repositório colado.
 
-**Na tela** (`/gerente/integracoes`, papel gerente):
+**Na tela** (`/gerente/publicacao`, papel gerente; as prévias sintéticas ficam em `/integracoes`):
 
 1. Cole o link da pasta do Drive → *Conectar*. O Basho confere o acesso; se faltar permissão, a
    mensagem diz com quem compartilhar. Links de hosts desconhecidos são recusados.

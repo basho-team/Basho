@@ -21,6 +21,7 @@ param(
     [int]$ApiPort = 8010,
     [int]$WebPort = 3010,
     [int]$FakePort = 9100,
+    [string]$DemoPassword = "basho-demo-2026",
     [switch]$FakeProviders,
     [switch]$Down
 )
@@ -33,6 +34,7 @@ $tenant = "11111111-1111-4111-8111-111111111111"
 $identitySecret = "demo-secret-with-at-least-32-chars-ok-1"
 $researcher = "22222222-2222-4222-8222-222222222222"
 $manager = "55555555-5555-4555-8555-555555555555"
+$researcher2 = "66666666-6666-4666-8666-666666666666"
 
 function Stop-Port([int]$port) {
     Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
@@ -152,7 +154,18 @@ try {
     $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:$ApiPort"
     $env:NEXT_PUBLIC_BASHO_PROJECT_ID = $projectId
     $env:BASHO_API_URL = "http://127.0.0.1:$ApiPort"
-    $env:BASHO_DEMO_REVIEWERS = "${researcher}:researcher,${manager}:manager"
+    # Login local por função (ADR-0011): senha única de demonstração, guardada só como hash scrypt.
+    # Arquivo temporário: o PowerShell 5.1 perde aspas duplas ao passar código a `node -e`.
+    $hashFile = Join-Path $logs "make_hash.mjs"
+    @'
+import { randomBytes, scryptSync } from "node:crypto";
+const salt = randomBytes(16).toString("hex");
+console.log("scrypt:" + salt + ":" + scryptSync(process.argv[2], salt, 64).toString("hex"));
+'@ | Set-Content -Encoding ascii $hashFile
+    $env:BASHO_DEMO_PASSWORD_HASH = (node $hashFile $DemoPassword | Select-Object -Last 1).Trim()
+    $env:BASHO_DEMO_LOGIN_ENABLED = "true"
+    $env:BASHO_DEMO_BACKEND_USERS = (@{ ana = $researcher; bruno = $researcher2; marina = $manager } | ConvertTo-Json -Compress)
+    $env:BASHO_DEMO_REVIEWERS = "${researcher}:researcher,${researcher2}:researcher,${manager}:manager"
     npm run build
     Stop-Port $WebPort
     Start-Process -WindowStyle Hidden -FilePath "npx.cmd" -ArgumentList @("next", "start", "-p", "$WebPort") `
@@ -163,9 +176,11 @@ Start-Sleep -Seconds 4
 Write-Host ""
 Write-Host "Demo no ar" -ForegroundColor Green
 Write-Host "  Projeto da demo : $projectId"
-Write-Host "  Front           : http://127.0.0.1:$WebPort  (gerente: /gerente/pendencias, /gerente/dossie)"
+Write-Host "  Front           : http://localhost:$WebPort  (use localhost: o login confere a origem exata)"
 Write-Host "  API             : http://127.0.0.1:$ApiPort/docs"
-Write-Host "  Integrações     : http://127.0.0.1:$WebPort/gerente/integracoes  (cole o link da pasta/página)"
+Write-Host "  Login           : http://localhost:$WebPort/login  (senha de demonstração: $DemoPassword)"
+Write-Host "                    ana@lumen.example (pesquisador) | marina@lumen.example (gerente) | rafael@lumen.example (fiscal)"
+Write-Host "  Publicação      : http://localhost:$WebPort/gerente/publicacao  (gerente: cole o link da pasta/página)"
 if ($FakeProviders) { Write-Host "  Servidor FALSO  : http://127.0.0.1:$FakePort/_state  (documentos gerados abrem aqui)" }
 Write-Host "  Logs            : $logs"
 Write-Host "  Parar           : powershell -File scripts/demo-up.ps1 -Down"
