@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "structlog>=24.4",
+    "tzdata>=2024.1",
     "uvicorn[standard]>=0.32",
 ]
 
