@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import insert, select, text, tuple_
+from sqlalchemy import func, insert, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from basho.evidence.models import EvidenceEventRow
@@ -69,6 +69,44 @@ class EvidenceRepository:
             EvidenceEventRow.source_ref.in_(refs),
         )
         return {ref for ref in (await self._session.execute(statement)).scalars() if ref}
+
+    async def source_summary(
+        self, tenant_id: UUID, project_id: UUID, sources: list[str]
+    ) -> list[tuple[str, int, int, datetime | None]]:
+        """Por origem: (source, eventos, documentos/refs distintos, último registro)."""
+        doc = func.coalesce(EvidenceEventRow.payload["doc_id"].astext, EvidenceEventRow.source_ref)
+        statement = (
+            select(
+                EvidenceEventRow.source,
+                func.count(),
+                func.count(func.distinct(doc)),
+                func.max(EvidenceEventRow.created_at),
+            )
+            .where(
+                EvidenceEventRow.tenant_id == tenant_id,
+                EvidenceEventRow.project_id == project_id,
+                EvidenceEventRow.source.in_(sources),
+            )
+            .group_by(EvidenceEventRow.source)
+        )
+        rows = (await self._session.execute(statement)).all()
+        return [(str(r[0]), int(r[1]), int(r[2]), r[3]) for r in rows]
+
+    async def latest_source_refs(
+        self, tenant_id: UUID, project_id: UUID, source: str, limit: int
+    ) -> list[str]:
+        statement = (
+            select(EvidenceEventRow.source_ref)
+            .where(
+                EvidenceEventRow.tenant_id == tenant_id,
+                EvidenceEventRow.project_id == project_id,
+                EvidenceEventRow.source == source,
+                EvidenceEventRow.source_ref.is_not(None),
+            )
+            .order_by(EvidenceEventRow.created_at.desc())
+            .limit(limit)
+        )
+        return [ref for ref in (await self._session.execute(statement)).scalars() if ref]
 
     async def project_of(self, tenant_id: UUID, event_id: UUID) -> UUID | None:
         statement = select(EvidenceEventRow.project_id).where(

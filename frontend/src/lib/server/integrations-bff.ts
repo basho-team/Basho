@@ -8,6 +8,7 @@ import {
   AgentRunSchema,
   LinkSchema,
   LinksSchema,
+  SourcesSchema,
   PublicationsSchema,
 } from "@/lib/bff/integrations-contract";
 import {
@@ -111,6 +112,22 @@ export async function listLinks(rawProjectId: string, request: Request, deps: Bf
     identity: opened.identity,
     okStatus: 200,
     okSchema: LinksSchema,
+  });
+}
+
+/** Fontes da organização (GitHub, Notion, Drive) já lidas para o projeto. Leitura, qualquer papel. */
+export async function getSources(rawProjectId: string, request: Request, deps: BffDeps = defaultDeps): Promise<Response> {
+  const projectId = parseId(rawProjectId, deps);
+  if (projectId instanceof Response) return projectId;
+  const opened = await openSession(request, deps);
+  if (opened instanceof Response) return opened;
+  return forward(deps, opened.gate, {
+    ...ROUTE,
+    method: "GET",
+    path: `/projects/${projectId}/sources`,
+    identity: opened.identity,
+    okStatus: 200,
+    okSchema: SourcesSchema,
   });
 }
 

@@ -13,7 +13,14 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from basho.evidence.contracts import EventKind, EventSource, EvidenceEvent, NewEvidenceEvent
+from basho.evidence.contracts import (
+    EXTERNAL_SOURCES,
+    EventKind,
+    EventSource,
+    EvidenceEvent,
+    NewEvidenceEvent,
+    SourceSummary,
+)
 from basho.evidence.domain.hashing import HASH_VERSION, compute_content_hash
 from basho.evidence.domain.rules import (
     EvidenceNotFoundError,
@@ -131,6 +138,40 @@ class EvidenceService:
         return await self._repository.existing_source_refs(
             tenant_id, project_id, source.value, wanted
         )
+
+    async def source_summary(self, tenant_id: UUID, project_id: UUID) -> list[SourceSummary]:
+        """O que cada fonte externa (GitHub, Notion, Drive) já trouxe para o projeto.
+
+        Lê só o ledger: reflete a conexão configurada na organização (worker), sem expor
+        configuração nem segredo. Fonte sem evento aparece com zeros.
+        """
+        await self._require_session_tenant(tenant_id)
+        external = [s.value for s in EXTERNAL_SOURCES]
+        rows = {
+            source: (events, documents, last)
+            for source, events, documents, last in await self._repository.source_summary(
+                tenant_id, project_id, external
+            )
+        }
+        result = []
+        for source in EXTERNAL_SOURCES:
+            events, documents, last = rows.get(source.value, (0, 0, None))
+            scopes: list[str] = []
+            if source is EventSource.GITHUB and events:
+                refs = await self._repository.latest_source_refs(
+                    tenant_id, project_id, source.value, 200
+                )
+                scopes = sorted({ref.split("@")[0].split("#")[0] for ref in refs})
+            result.append(
+                SourceSummary(
+                    source=source,
+                    events=events,
+                    documents=documents,
+                    last_seen_at=last,
+                    scopes=scopes,
+                )
+            )
+        return result
 
     async def query(
         self,

@@ -1,4 +1,5 @@
-"""`POST /api/v1/projects/{id}/evidence/{event_id}/correction`: corrigir evidência e propagar."""
+"""Evidências do projeto: correção humana (`POST .../evidence/{event_id}/correction`) e resumo
+das fontes externas conectadas pela organização (`GET .../sources`)."""
 
 from typing import Annotated
 from uuid import UUID
@@ -6,9 +7,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from basho.evidence.contracts import SourceSummary
 from basho.evidence.correction import EvidenceCorrectionService
 from basho.evidence.domain.rules import EvidenceNotFoundError, EvidenceValidationError
 from basho.evidence.propagation import PropagationResult
+from basho.evidence.service import EvidenceService
 from basho.identity import HumanIdentity, current_human
 from basho.reports.api import _scope
 
@@ -50,3 +53,24 @@ async def correct_evidence(
     except EvidenceValidationError:
         msg = "correção não permitida para esta evidência"
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg) from None
+
+
+class SourcesOut(BaseModel):
+    sources: list[SourceSummary]
+
+
+@router.get("/{project_id}/sources", response_model=SourcesOut)
+async def project_sources(
+    project_id: UUID,
+    request: Request,
+    _human: Annotated[HumanIdentity, Depends(current_human)],
+) -> SourcesOut:
+    """GitHub, Notion e Drive da organização: o que já entrou no ledger deste projeto.
+
+    A conexão é configurada uma vez para a organização (worker); o usuário não cola links.
+    """
+    async with _scope(request) as session:
+        summary = await EvidenceService(session).source_summary(
+            request.app.state.settings.tenant_id, project_id
+        )
+    return SourcesOut(sources=summary)

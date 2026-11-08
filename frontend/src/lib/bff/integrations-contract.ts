@@ -18,7 +18,19 @@ export const integrationPaths = {
   publications: (projectId: string) => `${BFF_BASE}/projects/${seg(projectId)}/publications`,
   generate: (projectId: string) => `${BFF_BASE}/projects/${seg(projectId)}/generate`,
   run: (runId: string) => `${BFF_BASE}/agent-runs/${seg(runId)}`,
+  sources: (projectId: string) => `${BFF_BASE}/projects/${seg(projectId)}/sources`,
 };
+
+/** Fontes da organização (GitHub, Notion, Drive): o que já entrou no ledger do projeto. */
+export const SourceSummarySchema = z.object({
+  source: z.enum(["github", "notion", "google_drive"]),
+  events: z.number().int().nonnegative(),
+  documents: z.number().int().nonnegative(),
+  last_seen_at: Timestamp.nullable(),
+  scopes: z.array(z.string().max(200)).default([]),
+});
+export type SourceSummary = z.infer<typeof SourceSummarySchema>;
+export const SourcesSchema = z.object({ sources: z.array(SourceSummarySchema) });
 
 export const LinkKindSchema = z.enum(["github_repo", "drive_folder", "notion_page"]);
 export type LinkKind = z.infer<typeof LinkKindSchema>;

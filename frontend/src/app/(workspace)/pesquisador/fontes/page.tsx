@@ -1,5 +1,6 @@
-import { SourcesPanel } from "@/components/demo-sources/sources-panel";
+import { redirect } from "next/navigation";
 
+/** As fontes são conectadas pela organização; não há o que conectar por pessoa. */
 export default function FontesPage() {
-  return <SourcesPanel />;
+  redirect("/integracoes");
 }
