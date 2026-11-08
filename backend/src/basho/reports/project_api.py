@@ -17,7 +17,7 @@ from basho.reports.api import _scope
 from basho.reports.auto_draft import NothingToDraftError
 from basho.reports.consolidation import ManagerConsolidation, consolidate
 from basho.reports.narrative import render_manager_summary
-from basho.reports.schemas import ReportReviewFlag, ReportVersionOut
+from basho.reports.schemas import PeriodClosingOut, ReportReviewFlag, ReportVersionOut
 from basho.reports.service import ReportQueryService
 
 router = APIRouter(prefix="/projects", tags=["reports"])
@@ -108,5 +108,18 @@ async def reports_needing_review(
 ) -> list[ReportReviewFlag]:
     async with _scope(request) as session:
         return await ReportQueryService(session).needs_review(
+            request.app.state.settings.tenant_id, project_id, period
+        )
+
+
+@router.post("/{project_id}/period/close", response_model=PeriodClosingOut)
+async def close_period(
+    project_id: UUID, period: Period, request: Request, human: Human
+) -> PeriodClosingOut:
+    """Gerente fecha o período: o sistema prepara o rascunho de quem ainda não tem relatório."""
+    if human.role is not HumanRole.MANAGER:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "só a coordenação fecha o período")
+    async with _scope(request) as session:
+        return await ReportQueryService(session).close_period(
             request.app.state.settings.tenant_id, project_id, period
         )
