@@ -11,6 +11,6 @@ export function SessionProvider({ user, children }: { user: DemoUser; children: 
 
 export function useDemoUser(): DemoUser {
   const user = useContext(SessionContext);
-  if (!user) throw new Error("Sessão da demonstração ausente.");
+  if (!user) throw new Error("Sessão ausente.");
   return user;
 }

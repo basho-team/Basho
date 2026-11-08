@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PageHeader, Section } from "@/components/layout/page-header";
-import { ArtifactStatusBadge, SyntheticBadge } from "@/components/status/badges";
+import { ArtifactStatusBadge } from "@/components/status/badges";
 import { ErrorState, LoadingState, EmptyState } from "@/components/status/states";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -57,7 +57,7 @@ function EventLine({ event, artifactId }: { event: EvidenceEvent; artifactId: st
           {event.source} · {event.actor.type}
           {event.actor.model ? ` (${event.actor.model})` : ""} · {dateFormat.format(new Date(event.created_at))}
         </span>
-        {event.is_synthetic && <SyntheticBadge />}
+
         {event.supersedes && (
           <Badge variant="outline">substitui {event.supersedes === artifactId ? "o registro original" : event.supersedes.slice(0, 8)}</Badge>
         )}
@@ -173,7 +173,7 @@ export function DossierView() {
         title="Dossiê do projeto"
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
-            {project.name} {project.is_synthetic && <SyntheticBadge />}
+            {project.name}
           </span>
         }
       />

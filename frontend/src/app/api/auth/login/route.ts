@@ -6,7 +6,7 @@ import { authError, demoLoginEnabled, hasDemoPassword, sameOriginJson, SESSION_C
 
 export async function POST(request: Request): Promise<Response> {
   if (!sameOriginJson(request)) return authError(403, "Origem da solicitação recusada.");
-  if (!demoLoginEnabled() || !hasDemoPassword()) return authError(503, "Login de demonstração não configurado.");
+  if (!demoLoginEnabled() || !hasDemoPassword()) return authError(503, "Login não configurado.");
   const body = await boundedJson(request, 4096);
   if (body instanceof Response) return body;
   const parsed = LoginSchema.safeParse(body);

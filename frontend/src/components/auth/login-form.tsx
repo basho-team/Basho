@@ -9,7 +9,7 @@ import { DEMO_ACCOUNTS, ROLE_HOME, ROLE_LABELS, type AppRole } from "@/lib/auth/
 
 const ROLE_DESCRIPTION: Record<AppRole, string> = {
   researcher: "Seus relatórios, fontes de pesquisa e pendências. Você revisa somente o próprio trabalho.",
-  manager: "Consolidação da equipe, acompanhamento, fechamento do período e configuração das fontes simuladas.",
+  manager: "Consolidação da equipe, acompanhamento, fechamento do período e configuração das fontes.",
   fiscal: "Pacote fiscal, documentos e sinalizações. Sem edição dos relatórios técnicos ou configuração das fontes.",
 };
 const ICONS = { researcher: FlaskConical, manager: LayoutDashboard, fiscal: Scale };
@@ -60,7 +60,7 @@ function LoginBrand() {
             ))}
           </div>
         </div>
-        <p className="max-w-md text-xs leading-relaxed text-blue-100/60">Ambiente local com contas e dados fictícios. Notion e Drive têm prévias simuladas; não há conexão a contas externas neste login.</p>
+        <p className="max-w-md text-xs leading-relaxed text-blue-100/60">Acompanhe pesquisas, documentos e decisões em um só lugar.</p>
       </section>);
 }
 
@@ -88,7 +88,7 @@ function LoginFields({ state }: { state: LoginState }) {
 function DemoAccounts({ state }: { state: LoginState }) {
   const { setEmail, setRole } = state;
   return (          <details className="mt-8 border-t pt-5 text-sm">
-            <summary className="cursor-pointer text-muted-foreground">Contas disponíveis para demonstração</summary>
+            <summary className="cursor-pointer text-muted-foreground">Contas disponíveis</summary>
             <div className="mt-3 grid gap-2">
               {DEMO_ACCOUNTS.map(account => {
                 const Icon = ICONS[account.role];
@@ -99,7 +99,7 @@ function DemoAccounts({ state }: { state: LoginState }) {
                 </button>;
               })}
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">Use a senha local fornecida para esta demonstração. A função deve corresponder à conta.</p>
+            <p className="mt-3 text-xs text-muted-foreground">Use a senha fornecida para sua conta. A função deve corresponder à conta.</p>
           </details>);
 }
 
@@ -114,7 +114,7 @@ export function LoginForm() {
         <div className="m-auto w-full max-w-md py-10">
           <p className="text-xs font-semibold tracking-widest text-primary uppercase">Bem-vindo ao Basho</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight">Entre na sua organização</h2>
-          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Lumen Sensores · demonstração local</p>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Lumen Sensores</p>
           <form className="mt-8 space-y-5" onSubmit={submit}>
             <LoginFields state={state} />
             {role && <p className="rounded-xl border bg-card p-3 text-sm leading-relaxed text-muted-foreground">{ROLE_DESCRIPTION[role]}</p>}

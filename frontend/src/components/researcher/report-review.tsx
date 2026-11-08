@@ -57,7 +57,7 @@ function ApprovalPanel({ detail, authorName, onConflict }: ApprovalPanelProps) {
   return (
     <div className="space-y-2 rounded-lg border p-4">
       <p className="text-sm">
-        Atuando como <strong>{authorName}</strong> (demonstração). A aprovação vale apenas para a{" "}
+        Atuando como <strong>{authorName}</strong>. A aprovação vale apenas para a{" "}
         <strong>v{version.version}</strong> e não é aprovação fiscal.
       </p>
       <TextField label="Comentário da aprovação" value={justification} onChange={setJustification} />

@@ -80,11 +80,3 @@ export function RunStatusBadge({ status }: { status: RunStatus }) {
   const [label, tone] = RUN[status];
   return <ToneBadge tone={tone}>{label}</ToneBadge>;
 }
-
-export function SyntheticBadge() {
-  return (
-    <Badge variant="outline" title="Dado fictício criado para a demonstração">
-      Sintético
-    </Badge>
-  );
-}

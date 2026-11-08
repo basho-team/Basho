@@ -22,6 +22,6 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(integrationAction(user, parsed.data.provider, parsed.data.action), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof DataSourceError) return authError(error.error.code === "FORBIDDEN" ? 403 : 409, error.message);
-    return authError(500, "Não foi possível verificar a prévia.");
+    return authError(500, "Não foi possível verificar a fonte.");
   }
 }

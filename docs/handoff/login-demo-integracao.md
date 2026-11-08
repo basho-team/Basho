@@ -46,3 +46,7 @@ A equipe responsável pelos PRs #66/#67 e o integrador dos contratos devem combi
 - Revisão de segurança equivalente feita por subagente nativo independente. O comando `/security-review` não está disponível nesta instalação; não foi executado.
 - Notion/Drive desta revisão são prévias locais. A implementação proposta no #66 não está incorporada e não foi validada por estes testes.
 - Nenhuma chamada a Google/Notion/GitHub real, Maker/Checker com LLM, PostgreSQL ou RLS foi exercitada nesta entrega de frontend.
+
+## Apresentação da interface
+
+Por solicitação explícita do usuário, nomes e textos visíveis não exibem qualificadores como demonstração, sintético ou fictício. Metadados is_synthetic/isSynthetic e a documentação técnica continuam identificando a origem dos dados. Esta escolha de apresentação não implementa conexões externas nem altera as limitações acima.

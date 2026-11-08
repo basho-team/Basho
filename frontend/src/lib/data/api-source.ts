@@ -59,7 +59,7 @@ function notImplemented(operation: string): Promise<never> {
   return Promise.reject(
     clientError(
       "NOT_IMPLEMENTED",
-      `A operação "${operation}" ainda não existe na API. Use NEXT_PUBLIC_DATA_SOURCE=mock para a demonstração.`,
+      `A operação "${operation}" ainda não existe na API. Consulte a configuração da fonte de dados.`,
     ),
   );
 }
@@ -102,7 +102,7 @@ export function createApiSource(options: ApiSourceOptions = {}): DataSource {
 
   function projectId(): string {
     if (options.projectId) return options.projectId;
-    throw clientError("NOT_CONFIGURED", "Defina NEXT_PUBLIC_BASHO_PROJECT_ID com o projeto da demonstração.");
+    throw clientError("NOT_CONFIGURED", "Defina NEXT_PUBLIC_BASHO_PROJECT_ID com o projeto.");
   }
 
   async function listAllPending(): Promise<ApiPendingItem[]> {

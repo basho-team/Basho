@@ -17,7 +17,7 @@ import type {
 export const PROJECT: Project = {
   id: "prj-calibra",
   organization_id: "org-lumen",
-  organization_name: "Lumen Sensores Ltda. (fictícia)",
+  organization_name: "Lumen Sensores Ltda.",
   name: "Calibração adaptativa de sensores ópticos",
   objective: "Reduzir o erro de medição dos sensores ópticos sob variação térmica para menos de 2%.",
   is_synthetic: true,
@@ -41,13 +41,13 @@ export const PEOPLE: Person[] = [
 ];
 
 const CAPTURED = "2026-11-01T09:00:00-03:00";
-const NORM_VERSION = "ref-2026-11 (exemplo, a validar)";
+const NORM_VERSION = "ref-2026-11 (a validar)";
 
 export const EVIDENCE: EvidenceVersion[] = [
   {
     id: "ev-pr42",
     source: "github",
-    external_id: "lumen-demo/calibra#42",
+    external_id: "lumen/calibra#42",
     title: "PR #42: experimento com filtro de Kalman adaptativo",
     revision: "a1f3c9e",
     content_hash: "sha256:9c1e7d2a4b",
@@ -60,7 +60,7 @@ export const EVIDENCE: EvidenceVersion[] = [
   {
     id: "ev-pr43",
     source: "github",
-    external_id: "lumen-demo/calibra#43",
+    external_id: "lumen/calibra#43",
     title: "PR #43: rede neural compacta para compensação térmica",
     revision: "b7d0e21",
     content_hash: "sha256:41af0b9e3c",
@@ -73,7 +73,7 @@ export const EVIDENCE: EvidenceVersion[] = [
   {
     id: "ev-commits-bruno",
     source: "github",
-    external_id: "lumen-demo/calibra@main 3e2a..9f10",
+    external_id: "lumen/calibra@main 3e2a..9f10",
     title: "Commits de integração do pipeline de coleta",
     revision: "9f10b44",
     content_hash: "sha256:77c2d1e0aa",
@@ -336,7 +336,7 @@ export const FINDINGS: Finding[] = [
     criterion: {
       code: "PD-ATIV-01",
       title: "Atividade com incerteza técnica e método documentado",
-      reference: "Lei 11.196/2005, art. 17 (referência de exemplo)",
+      reference: "Lei 11.196/2005, art. 17",
       version: NORM_VERSION,
     },
     object: { type: "activity", id: "c-ana-act", label: "Compensação térmica (Ana Ribeiro)" },
@@ -353,7 +353,7 @@ export const FINDINGS: Finding[] = [
     criterion: {
       code: "DESP-ALOC-01",
       title: "Despesa vinculada ao projeto com critério de alocação",
-      reference: "Lei 11.196/2005, art. 17, I (referência de exemplo)",
+      reference: "Lei 11.196/2005, art. 17, I",
       version: NORM_VERSION,
     },
     object: { type: "expense", id: "exp-nf1023", label: "NF 1023 (despesa mista)" },
@@ -370,7 +370,7 @@ export const FINDINGS: Finding[] = [
     criterion: {
       code: "PD-HORAS-01",
       title: "Dispêndio com pessoal dedicado comprovado",
-      reference: "Lei 11.196/2005, art. 17, I (referência de exemplo)",
+      reference: "Lei 11.196/2005, art. 17, I",
       version: NORM_VERSION,
     },
     object: { type: "activity", id: "c-ana-hours", label: "Horas de Ana Ribeiro" },

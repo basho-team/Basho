@@ -75,9 +75,9 @@ export default function Home() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Cenário da demonstração</CardTitle>
+          <CardTitle>Projeto em acompanhamento</CardTitle>
           <CardDescription className="max-w-3xl leading-relaxed">
-            Lumen Sensores (fictícia), projeto “Calibração adaptativa de sensores ópticos”, período outubro/2026, dois
+            Lumen Sensores, projeto “Calibração adaptativa de sensores ópticos”, período outubro/2026, dois
             pesquisadores. Inclui um experimento sem resultado positivo, horas não informadas e uma nota fiscal mista
             sem critério de alocação. Sinalizações não são garantia de benefício fiscal.
           </CardDescription>

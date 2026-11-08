@@ -41,7 +41,7 @@ export const defaultDeps: BffDeps = {
 export const COMMON_MESSAGES = {
   invalidRequest: "Requisição inválida.",
   crossSite: "Requisição de outra origem recusada.",
-  noRole: "Escolha um papel da demonstração (pesquisador ou gerente) para continuar.",
+  noRole: "Sua conta não tem acesso a esta operação.",
   invalidResponse: "Resposta inesperada do servidor do Basho.",
   tooLarge: "O histórico deste projeto passou do limite de leitura.",
   backend: "Não foi possível falar com o servidor do Basho. Tente de novo.",

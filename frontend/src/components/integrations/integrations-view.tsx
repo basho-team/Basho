@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, GitPullRequest, HardDrive, NotebookPen, RefreshCw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, GitPullRequest, HardDrive, NotebookPen, RefreshCw } from "lucide-react";
 import { useDemoUser } from "@/components/auth/session-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,7 +37,7 @@ function useIntegrations() {
       const body = await response.json();
       if (!response.ok) { setError(body.message ?? "Não foi possível concluir."); return; }
       setOverview(IntegrationOverviewSchema.parse(body));
-      setMessage(action === "verify" ? "Leitura da prévia verificada para sua função. Nenhuma conta externa foi acessada." : "Prévia de demonstração atualizada.");
+      setMessage(action === "verify" ? "Leitura das fontes disponíveis verificada." : "Fontes atualizadas.");
     } catch { setError("Não foi possível conectar ao servidor."); } finally { setPending(null); }
   }
 
@@ -54,30 +54,29 @@ function IntegrationCard({ integration, state, role }: {
         const Icon = ICON[integration.provider];
         return <Card data-provider={integration.provider}>
           <CardHeader><CardTitle className="flex items-center gap-2"><Icon className="size-5" aria-hidden />{integration.name}</CardTitle>
-            <span className="w-fit rounded-full bg-muted px-2 py-1 text-xs">{integration.enabled ? "Prévia simulada ativa" : "Prévia desativada"}</span>
+            <span className="w-fit rounded-full bg-muted px-2 py-1 text-xs">{integration.enabled ? "Fontes disponíveis" : "Fontes desativadas"}</span>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm leading-relaxed text-muted-foreground">{integration.implementation}</p>
-            <p className="text-xs text-muted-foreground">{role === "researcher" ? "Somente fontes vinculadas ao seu trabalho." : role === "fiscal" ? "Leitura de fontes e documentos. Configuração reservada ao gerente." : "Você pode configurar e atualizar as prévias da organização."}</p>
+            <p className="text-xs text-muted-foreground">{role === "researcher" ? "Somente fontes vinculadas ao seu trabalho." : role === "fiscal" ? "Leitura de fontes e documentos. Configuração reservada ao gerente." : "Você pode configurar e atualizar as fontes da organização."}</p>
             <ul className="space-y-3">
               {integration.sources.map(source => <li key={source.id} className="rounded-lg border p-3 text-sm">
                 <p className="font-medium">{source.title}</p><p className="mt-1 text-muted-foreground">{source.excerpt}</p>
                 <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{source.locator} · {source.revision}</p>
-                <span className="mt-2 inline-block text-xs text-primary">Dado sintético</span>
               </li>)}
             </ul>
-            {integration.sources.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma fonte disponível nesta prévia.</p>}
+            {integration.sources.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma fonte disponível.</p>}
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={!integration.enabled || pending !== null}
                 onClick={() => act(integration.provider, "verify")}><RefreshCw className="size-3.5" aria-hidden />Verificar leitura</Button>
               {integration.canConfigure && <>
                 <Button size="sm" variant="outline" disabled={!integration.enabled || pending !== null}
-                  onClick={() => act(integration.provider, "sync")}>Atualizar prévia</Button>
+                  onClick={() => act(integration.provider, "sync")}>Atualizar fontes</Button>
                 <Button size="sm" variant="ghost" disabled={pending !== null}
-                  onClick={() => act(integration.provider, integration.enabled ? "disable" : "enable")}>{integration.enabled ? "Desativar prévia" : "Ativar prévia"}</Button>
+                  onClick={() => act(integration.provider, integration.enabled ? "disable" : "enable")}>{integration.enabled ? "Desativar fontes" : "Ativar fontes"}</Button>
               </>}
             </div>
-            {integration.checkedAt && <p className="text-xs text-muted-foreground">Última verificação local: {new Date(integration.checkedAt).toLocaleString("pt-BR")}</p>}
+            {integration.checkedAt && <p className="text-xs text-muted-foreground">Última verificação: {new Date(integration.checkedAt).toLocaleString("pt-BR")}</p>}
           </CardContent>
         </Card>;
 }
@@ -88,13 +87,6 @@ export function IntegrationsView() {
   const { overview, message, error } = state;
   return <div className="space-y-6">
     <PageHeader title="Fontes e integrações" subtitle="Acompanhe o que está disponível para sua função na organização." />
-    <div className="flex gap-3 rounded-xl border bg-card p-4 text-sm">
-      <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
-      <div><p className="font-medium">Demonstração com fontes sintéticas</p><p className="mt-1 leading-relaxed text-muted-foreground">
-        As verificações abaixo testam a leitura das prévias locais. Notion e Google Drive ainda não têm conexão real.
-        O conector GitHub existe no backend e depende da configuração do projeto; esta tela não testa credenciais externas.
-      </p></div>
-    </div>
     {message && <p role="status" className="flex items-start gap-2 rounded-lg bg-primary/10 p-3 text-sm text-primary"><CheckCircle2 className="size-4 shrink-0" aria-hidden />{message}</p>}
     {error && <p role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {!overview && !error && <p className="text-muted-foreground">Carregando fontes…</p>}

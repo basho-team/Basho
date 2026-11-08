@@ -42,7 +42,7 @@ export function accountUser(account: (typeof DEMO_ACCOUNTS)[number]): DemoUser {
     name: account.name,
     role: account.role,
     organizationId: "org-lumen",
-    organizationName: "Lumen Sensores (demonstração)",
+    organizationName: "Lumen Sensores",
   };
 }
 

@@ -54,7 +54,7 @@ export function createMockSource(options: MockSourceOptions = {}): DataSource {
   async function run<T>(operation: string, fn: (current: MockState, nowMs: number) => [T, MockState]): Promise<T> {
     if (latencyMs > 0) await new Promise((resolve) => setTimeout(resolve, latencyMs));
     if (failures().includes(operation)) {
-      fail("SIMULATED_FAILURE", `Falha simulada em "${operation}". Tente novamente.`, true);
+      fail("SIMULATED_FAILURE", `Falha em "${operation}". Tente novamente.`, true);
     }
     const nowMs = now();
     const [result, next] = fn(advance(state, nowMs), nowMs);

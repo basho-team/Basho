@@ -1,4 +1,3 @@
-import { SyntheticBadge } from "@/components/status/badges";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Expense } from "@/lib/contracts/provisional";
@@ -40,7 +39,7 @@ export function ExpensesTable({ expenses }: { expenses: Expense[] }) {
             <TableRow key={e.id} className={e.reconciliation_state === "excluded" ? "text-muted-foreground" : undefined}>
               <TableCell className="whitespace-normal">
                 <div className="flex flex-wrap items-center gap-2 font-medium">
-                  {e.document} {e.is_synthetic && <SyntheticBadge />}
+                  {e.document}
                 </div>
                 <div className="text-xs text-muted-foreground">{e.item}</div>
                 {e.excluded_reason && <div className="text-xs">Motivo da exclusão: {e.excluded_reason}</div>}

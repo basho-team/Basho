@@ -20,7 +20,7 @@ function event(id: string, partial: Omit<EvidenceEvent, "id" | "content_hash" | 
 const pr42 = event(EV_PR42, {
   kind: "pull_request_observed",
   source: "github",
-  source_ref: "lumen-demo/calibra#42",
+  source_ref: "lumen/calibra#42",
   actor: { type: "system", id: "system" },
   payload: { title: "PR #42: experimento com filtro de Kalman adaptativo" },
   created_at: "2026-10-20T14:00:00Z",
@@ -39,8 +39,8 @@ export function mockDossier(): Dossier {
   return {
     project: {
       id: PROJECT_ID,
-      name: "Calibra (demonstração)",
-      description: "Projeto fictício para a demonstração do Basho.",
+      name: "Calibra",
+      description: "Calibração adaptativa de sensores ópticos.",
       is_synthetic: true,
       created_at: "2026-10-01T12:00:00Z",
       activities: [{ id: ACTIVITY_ID, title: "Calibração térmica adaptativa", description: null, is_synthetic: true }],
