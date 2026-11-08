@@ -27,3 +27,7 @@ Frontend: Next.js (App Router) · TypeScript strict · shadcn/ui · Tailwind · 
 - Issue → branch `<tipo>/<n>-<slug>` → PR com `Closes #n`, CI verde, revisão.
 - Conventional Commits. Nada direto na `main`.
 - Teste junto com o código (AAA). LLM mockado em testes.
+
+## Subagentes de desenvolvimento
+- [`.claude/agents/`](.claude/agents/README.md) tem um subagente do Claude Code por área (ledger, agent, connectors, security, frontend, qa, infra), cada um mapeado às suas issues. Use o da área antes de implementar ou revisar.
+- São agentes que **constroem** o Basho, não agentes do produto (não contam no limite da ADR-0004).
