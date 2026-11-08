@@ -18,3 +18,11 @@
 5. `Run` (`queued | running | awaiting_input | completed | failed`): é o job da fila (#10)?
 6. `ApiError` (`code`, `message`, `correlation_id`, `retryable`) como envelope de erro da API.
 7. Rotas reais para as operações de `src/lib/data/source.ts`.
+
+## API real ligada (#12)
+`NEXT_PUBLIC_DATA_SOURCE=api` já usa o contrato real de `/api/v1/reports` (#39) via BFF (`src/app/api/bff`):
+- tipos gerados em `src/lib/api/schema.d.ts`; validação de runtime em `src/lib/api/reports.ts`;
+- tradução para os tipos desta pasta em `src/lib/data/api-adapters.ts` (só formato, sem regra);
+- extensões feitas aqui para caber o contrato real: seções `technological_challenge | hypothesis | method | uncertainty`, estados `text_approved` e `superseded`, `justification`/`created_at` anuláveis e `ReportDetail.period_label`.
+
+Ainda sem rota no backend: contexto, lista de relatórios, consolidação, fiscal e pendências (#5). Até lá, essas operações devolvem `NOT_IMPLEMENTED`.

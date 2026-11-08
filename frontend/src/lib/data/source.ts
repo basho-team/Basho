@@ -41,6 +41,9 @@ export interface ReviewInput {
 
 export interface CorrectionInput {
   reportVersionId: string;
+  /** Quem corrige, definido pela troca de papel da demonstração. */
+  reviewerId: string;
+  role: Role;
   claimId: string;
   newText: string;
   justification: string;

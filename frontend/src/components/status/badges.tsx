@@ -20,6 +20,8 @@ const REVIEW: Record<ReviewState, [string, Tone]> = {
   awaiting_researcher: ["Aguardando pesquisador", "warn"],
   awaiting_manager: ["Aprovado pelo pesquisador", "info"],
   available_to_fiscal: ["Disponível ao fiscal", "ok"],
+  text_approved: ["Texto aprovado por pesquisador e gerente", "ok"],
+  superseded: ["Versão substituída", "muted"],
 };
 
 const CLAIM: Record<ClaimStatus, [string, Tone]> = {

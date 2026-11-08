@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Role, Run } from "@/lib/contracts/provisional";
-import { dataSource } from "@/lib/data";
+import { dataSource, DataSourceError } from "@/lib/data";
 import type {
   ClarificationInput,
   CorrectionInput,
@@ -77,12 +77,23 @@ export function usePendingFor(role: Role, personId?: string) {
   });
 }
 
-/** Toda escrita pode afetar várias telas: invalida tudo do domínio. */
+/** A versão revisada deixou de ser a atual (409 da API ou do mock). */
+export function isVersionConflict(error: unknown): boolean {
+  return error instanceof DataSourceError && error.error.code === "VERSION_CONFLICT";
+}
+
+/**
+ * Toda escrita pode afetar várias telas: invalida tudo do domínio. Num conflito de versão,
+ * recarrega também, para a tela mostrar a versão nova.
+ */
 function useDomainMutation<TInput, TOutput>(fn: (input: TInput) => Promise<TOutput>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: fn,
     onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
+    onError: (error) => {
+      if (isVersionConflict(error)) void client.invalidateQueries({ queryKey: queryKeys.all });
+    },
   });
 }
 
