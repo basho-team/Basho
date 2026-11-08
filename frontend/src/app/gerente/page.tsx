@@ -38,6 +38,37 @@ function ManagerReview({ report }: { report: ReportVersionOut }) {
   );
 }
 
+function FormalHoursForm({ ctx }: { ctx: DemoContext }) {
+  const queryClient = useQueryClient();
+  const researchers = ctx.people.filter((p) => p.role === "researcher");
+  const [researcherId, setResearcherId] = useState(researchers[0]?.id ?? "");
+  const [hours, setHours] = useState("");
+  const [description, setDescription] = useState("");
+  const declare = useMutation({
+    mutationFn: () => api.post(`projects/${ctx.project_id}/evidence`, {
+      kind: "formal_hours_declared",
+      title: `Horas formais — ${personName(ctx, researcherId)} — ${ctx.period.start.slice(0, 7)}`,
+      description, hours: Number(hours), researcher_id: researcherId,
+    }),
+    onSuccess: () => { setHours(""); setDescription(""); void queryClient.invalidateQueries({ queryKey: ["evidence"] }); },
+  });
+  return (
+    <Card title="Registrar horas formais (coordenação)">
+      <form className="grid gap-2 sm:grid-cols-[1fr_8rem_2fr_auto]" onSubmit={(e) => { e.preventDefault(); declare.mutate(); }}>
+        <select className={inputClass} value={researcherId} onChange={(e) => setResearcherId(e.target.value)}>
+          {researchers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <input className={inputClass} type="number" min={1} max={744} placeholder="horas" required value={hours} onChange={(e) => setHours(e.target.value)} />
+        <input className={inputClass} placeholder="Base do registro (ex.: folha de ponto conferida)" minLength={10} required value={description} onChange={(e) => setDescription(e.target.value)} />
+        <button className={buttonClass} disabled={declare.isPending}>Registrar</button>
+      </form>
+      <p className="mt-2 text-xs text-zinc-500">Horas entram no ledger como registro formal da coordenação; o pesquisador só as referencia.</p>
+      {declare.isError && <ErrorBox error={declare.error} />}
+      {declare.isSuccess && <p className="mt-1 text-xs text-emerald-700">Registro gravado no ledger.</p>}
+    </Card>
+  );
+}
+
 function ManagerWork({ ctx }: { ctx: DemoContext }) {
   const reports = useReports(ctx);
   const cons = useQuery({
@@ -67,6 +98,7 @@ function ManagerWork({ ctx }: { ctx: DemoContext }) {
           ))}
         </ul>
       </Card>
+      <FormalHoursForm ctx={ctx} />
       <Card title="Consolidação gerencial" actions={c && <button type="button" className={secondaryButtonClass} onClick={() => setShowMd(!showMd)}>{showMd ? "Ver estruturado" : "Ver texto exportável"}</button>}>
         {cons.isPending && <Loading />}
         {cons.isError && <ErrorBox error={cons.error} onRetry={() => void cons.refetch()} />}

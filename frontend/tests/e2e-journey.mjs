@@ -146,6 +146,24 @@ async function main() {
   await waitText("aprovado");
   await shot("06-ana-v2-confirmada");
 
+  // 4b) coordenação registra as horas formais da Ana; Ana resolve a lacuna citando-as (v3)
+  await as(CARLA, "manager", "/gerente");
+  await waitText("Registrar horas formais");
+  await evalJs(`__b.set(__b.byPlaceholder("horas", 0), "96")`);
+  await evalJs(`__b.set(__b.byPlaceholder("Base do registro (ex.: folha de ponto conferida)", 0), "Folha de ponto de outubro conferida pela coordenação (sintético).")`);
+  await click("Registrar");
+  await waitText("Registro gravado no ledger");
+  await as(ANA, "researcher", "/pesquisador");
+  await waitText("Horas formais — Ana");
+  await evalJs(`__b.selectNth("resolve_missing", 0, "resolve_missing")`);
+  assert.ok(await evalJs(`__b.pick(0, "Horas formais — Ana")`), "registro formal de horas");
+  await evalJs(`__b.set(__b.byPlaceholder("Motivo da correção (obrigatório)", 0), "Lacuna de horas resolvida pelo registro formal da coordenação.")`);
+  await click("Gerar nova versão");
+  await waitText("versão atual v3");
+  await click("Confirmar v3");
+  await waitText("Texto da v3 confirmado");
+  await shot("06b-ana-v3-horas");
+
   // 5) Bia confirma o próprio relatório (seed)
   await as(BIA, "researcher", "/pesquisador");
   await waitText("Confirmar v1");
@@ -159,7 +177,7 @@ async function main() {
   assert.match(manager, /Negativos: 1/);
   assert.match(manager, /Inconclusivos: 1/);
   await shot("07-gerente-consolidacao");
-  await click("Aceitar v2");
+  await click("Aceitar v3");
   await waitText("Gerente: Texto confirmado");
 
   // 7) Davi consulta o dossiê
@@ -170,12 +188,13 @@ async function main() {
   assert.match(fiscal, /Resultado inconclusivo/);
   assert.match(fiscal, /Conflitante/);
   assert.match(fiscal, /report:[0-9a-f-]{36}\/experiment\//);
+  assert.doesNotMatch(fiscal, /Ana \(fictícia\)[^\n]*\n[^\n]*\n[^\n]*sem registro formal/);
   await shot("08-fiscal-dossie");
 
   // 8) viewport estreito
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await as(ANA, "researcher", "/pesquisador");
-  await waitText("versão atual v2");
+  await waitText("versão atual v3");
   const overflow = await evalJs("document.documentElement.scrollWidth > window.innerWidth + 1");
   await shot("09-mobile-pesquisador");
   await close();

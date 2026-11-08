@@ -43,6 +43,10 @@ class EvidenceIn(BaseModel):
     source_ref: str | None = Field(default=None, max_length=200)
     hours: float | None = Field(default=None, gt=0, le=744, description="Só formal_hours")
     supersedes: UUID | None = None
+    researcher_id: UUID | None = Field(
+        default=None,
+        description="A quem o registro se refere (ex.: horas declaradas pela coordenação)",
+    )
 
 
 @router.post(
@@ -70,6 +74,8 @@ async def register_evidence(
         msg = "horas só (e obrigatoriamente) em formal_hours_declared"
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg)
     payload: dict[str, Any] = {"title": body.title, "description": body.description}
+    if body.researcher_id is not None:
+        payload["researcher_id"] = str(body.researcher_id)
     if is_hours:
         payload["hours"] = body.hours
         payload["declared_by_role"] = reviewer.role.value

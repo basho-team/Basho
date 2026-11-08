@@ -278,5 +278,8 @@ async def test_researcher_cannot_self_declare_formal_hours(client: AsyncClient) 
     }
     url = f"/api/v1/projects/{uuid4()}/evidence"
     assert (await client.post(url, json=body, headers=ANA_H)).status_code == 403
-    manager = await client.post(url, json=body, headers=_who(CARLA, "manager"))
+    manager = await client.post(
+        url, json={**body, "researcher_id": str(ANA)}, headers=_who(CARLA, "manager")
+    )
     assert manager.status_code == 201
+    assert manager.json()["payload"]["researcher_id"] == str(ANA)
