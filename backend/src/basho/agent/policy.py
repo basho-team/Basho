@@ -55,6 +55,7 @@ class DenialReason(StrEnum):
     LEVEL_NOT_ALLOWED = "level_not_allowed"
     NOT_IN_PROFILE = "not_in_profile"
     ARGUMENTS_TOO_LARGE = "arguments_too_large"
+    INVALID_ARGUMENTS = "invalid_arguments"
 
 
 class FailureReason(StrEnum):
@@ -102,8 +103,11 @@ class ToolPolicy:
         self._timeout_seconds = timeout_seconds
 
     async def execute(
-        self, context: ToolCallContext, tool_name: str, arguments: Mapping[str, Any]
+        self, context: ToolCallContext, tool_name: str, arguments: object
     ) -> ToolResult:
+        """`arguments` vem do modelo: o que não for objeto JSON é negado sem executar."""
+        if not isinstance(arguments, Mapping):
+            return await self._deny_malformed(context, tool_name)
         entry = self._registry.get(tool_name)
         if entry is None:
             summary = InputSummary.of(arguments, allowed_keys=())
@@ -186,6 +190,15 @@ class ToolPolicy:
             raw = ToolResult.model_validate(raw.model_dump() | normalized)
         failure = FailureReason.TOOL_ERROR if raw.status is ToolCallStatus.ERROR else None
         return raw, failure
+
+    async def _deny_malformed(self, context: ToolCallContext, tool_name: str) -> ToolResult:
+        entry = self._registry.get(tool_name)
+        empty = InputSummary.of({}, allowed_keys=())
+        if entry is None:
+            return await self._deny(context, tool_name, None, empty, DenialReason.UNKNOWN_TOOL)
+        return await self._deny(
+            context, entry.spec.name, entry.spec.level, empty, DenialReason.INVALID_ARGUMENTS
+        )
 
     async def _request_approval(
         self,

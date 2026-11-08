@@ -97,7 +97,7 @@ _RESEARCH_REPORT_WRITE_TOOLS = ("ledger_record_draft", "pending_item_open")
 
 RESEARCH_REPORT_PROFILE = TaskProfile(
     kind=TaskKind.RESEARCH_REPORT,
-    prompt_version="v1",
+    prompt_version="v2",
     allowed_tools=frozenset(
         {name for name, level in MVP_TOOLS.items() if level is PermissionLevel.READ}
         | set(_RESEARCH_REPORT_WRITE_TOOLS)
