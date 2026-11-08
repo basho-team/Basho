@@ -1,0 +1,8 @@
+{
+  "name": "basho-demo-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "playwright test", "test:list": "playwright test --list" },
+  "devDependencies": { "@playwright/test": "1.62.1" }
+}
