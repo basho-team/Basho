@@ -69,6 +69,10 @@ class EvidenceService:
     def __init__(self, session: AsyncSession) -> None:
         self._repository = EvidenceRepository(session)
 
+    async def require_session_tenant(self, tenant_id: UUID) -> None:
+        """Falha se a sessão não foi aberta para ``tenant_id`` (``tenant_session``)."""
+        await self._require_session_tenant(tenant_id)
+
     async def _require_session_tenant(self, tenant_id: UUID) -> None:
         """A sessão deve ter sido aberta para o mesmo tenant (``tenant_session``)."""
         if await self._repository.current_tenant_setting() != str(tenant_id):
