@@ -1,4 +1,4 @@
-"""Migração 0001: upgrade -> downgrade -> upgrade em banco exclusivo."""
+"""Migrações: upgrade -> downgrade -> upgrade em banco exclusivo (0001, 0002 e 0003)."""
 
 import psycopg
 import pytest
@@ -15,6 +15,13 @@ FUNCTION_EXISTS_SQL = (
 
 
 REPORT_TABLES = ("reporting_periods", "report_versions", "report_reviews")
+RLS_FORCED_SQL = (
+    "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname = 'evidence_events'"
+)
+POLICY_EXISTS_SQL = (
+    "SELECT EXISTS (SELECT 1 FROM pg_policy WHERE polname = 'evidence_events_tenant_isolation')"
+)
+APP_CAN_SELECT_SQL = "SELECT has_table_privilege('basho_api', 'evidence_events', 'SELECT')"
 
 
 def _report_tables_exist(url: URL) -> list[bool]:
@@ -38,6 +45,18 @@ def test_migration_is_reversible(migration_db_url: URL) -> None:
     assert _scalar(migration_db_url, TABLE_EXISTS_SQL) is True
     assert _scalar(migration_db_url, FUNCTION_EXISTS_SQL) is True
     assert _report_tables_exist(migration_db_url) == [True, True, True]
+    assert _scalar(migration_db_url, RLS_FORCED_SQL) is True
+    assert _scalar(migration_db_url, POLICY_EXISTS_SQL) is True
+    assert _scalar(migration_db_url, APP_CAN_SELECT_SQL) is True
+
+    run_alembic(migration_db_url, "downgrade", "0001")
+    assert _report_tables_exist(migration_db_url) == [False, False, False]
+    assert _scalar(migration_db_url, RLS_FORCED_SQL) is False
+    assert _scalar(migration_db_url, POLICY_EXISTS_SQL) is False
+    assert _scalar(migration_db_url, APP_CAN_SELECT_SQL) is False
+
+    run_alembic(migration_db_url, "upgrade", "head")
+    assert _scalar(migration_db_url, RLS_FORCED_SQL) is True
 
     run_alembic(migration_db_url, "downgrade", "base")
     assert _scalar(migration_db_url, TABLE_EXISTS_SQL) is False
@@ -47,6 +66,7 @@ def test_migration_is_reversible(migration_db_url: URL) -> None:
     run_alembic(migration_db_url, "upgrade", "head")
     assert _scalar(migration_db_url, TABLE_EXISTS_SQL) is True
     assert _report_tables_exist(migration_db_url) == [True, True, True]
+    assert _scalar(migration_db_url, POLICY_EXISTS_SQL) is True
 
 
 def test_downgrade_is_refused_when_ledger_has_rows(migration_db_url: URL) -> None:
@@ -54,9 +74,12 @@ def test_downgrade_is_refused_when_ledger_has_rows(migration_db_url: URL) -> Non
     run_alembic(migration_db_url, "upgrade", "head")
     dsn = migration_db_url.set(drivername="postgresql").render_as_string(hide_password=False)
     with psycopg.connect(dsn) as connection:
+        # FORCE RLS: o tenant precisa estar definido mesmo para o dono não-superuser.
+        connection.execute("SELECT set_config('app.tenant_id', gen_random_uuid()::text, true)")
         connection.execute(
             "INSERT INTO evidence_events (id, tenant_id, project_id, kind, source, actor, "
-            "payload, content_hash, hash_version) VALUES (gen_random_uuid(), gen_random_uuid(), "
+            "payload, content_hash, hash_version) VALUES (gen_random_uuid(), "
+            "current_setting('app.tenant_id')::uuid, "
             "gen_random_uuid(), 'commit_observed', 'github', '{}'::jsonb, '{}'::jsonb, "
             "repeat('0', 64), 1)"
         )

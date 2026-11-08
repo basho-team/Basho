@@ -53,8 +53,8 @@ async def test_append_persists_event_with_hash_recomputable_from_stored_row(
         "DELETE FROM evidence_events WHERE tenant_id = :t",
     ],
 )
-async def test_update_and_delete_are_rejected_by_trigger(
-    session_factory: Factory, statement: str
+async def test_update_and_delete_are_rejected_by_trigger_even_for_owner(
+    session_factory: Factory, owner_session_factory: Factory, statement: str
 ) -> None:
     # Arrange
     tenant_id, project_id = fresh_ids()
@@ -63,14 +63,16 @@ async def test_update_and_delete_are_rejected_by_trigger(
             make_event(tenant_id=tenant_id, project_id=project_id)
         )
 
-    # Act / Assert
+    # Act / Assert (o role da app nem chega ao trigger: ver test_rls_roles_db)
     with pytest.raises(DBAPIError, match=APPEND_ONLY):
-        async with tenant_session(session_factory, tenant_id) as session:
+        async with tenant_session(owner_session_factory, tenant_id) as session:
             await session.execute(text(statement), {"t": tenant_id})
 
 
-async def test_truncate_is_rejected_by_trigger(session_factory: Factory) -> None:
-    async with session_factory() as session, session.begin():
+async def test_truncate_is_rejected_by_trigger_even_for_owner(
+    owner_session_factory: Factory,
+) -> None:
+    async with owner_session_factory() as session, session.begin():
         with pytest.raises(DBAPIError, match=APPEND_ONLY):
             # CASCADE: sem ele a FK de report_versions (#39) barra antes do trigger
             await session.execute(text("TRUNCATE evidence_events CASCADE"))

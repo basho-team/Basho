@@ -1,6 +1,8 @@
 """Ambiente Alembic assíncrono (SQLAlchemy 2 + psycopg 3).
 
-A URL vem só de ``DATABASE_URL`` (sem carregar ``Settings``, que exige todas as chaves).
+A URL vem só de ``MIGRATION_DATABASE_URL`` (role dono do schema; sem carregar
+``Settings``, que exige todas as chaves). Não há fallback para ``DATABASE_URL``: esse é o
+role da aplicação, que não pode criar nem alterar tabelas (ADR-0006).
 Migrações rodam via CLI (``uv run alembic upgrade head``), nunca no startup da API.
 """
 
@@ -24,10 +26,10 @@ target_metadata = None
 
 
 def _database_url() -> str:
-    """Lê DATABASE_URL; a mensagem de erro nunca inclui o valor."""
-    url = os.environ.get("DATABASE_URL")
+    """Lê MIGRATION_DATABASE_URL; a mensagem de erro nunca inclui o valor."""
+    url = os.environ.get("MIGRATION_DATABASE_URL")
     if not url:
-        message = "DATABASE_URL não definida; exporte-a antes de rodar o Alembic."
+        message = "MIGRATION_DATABASE_URL não definida; exporte-a antes de rodar o Alembic."
         raise RuntimeError(message)
     return url
 
