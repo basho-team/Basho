@@ -1166,7 +1166,11 @@ export interface operations {
     get_report_version_api_v1_reports__report_version_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
             path: {
                 report_version_id: string;
             };
@@ -1245,7 +1249,11 @@ export interface operations {
     get_project_api_v1_projects__project_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1280,7 +1288,11 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
             path: {
                 project_id: string;
             };
@@ -1311,7 +1323,11 @@ export interface operations {
     get_dossier_api_v1_projects__project_id__dossier_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
             path: {
                 project_id: string;
             };
