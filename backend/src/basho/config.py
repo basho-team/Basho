@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr
     featherless_api_key: SecretStr
     featherless_base_url: AnyHttpUrl
+    featherless_fallback_api_key: SecretStr | None = None
+    """Segunda conta do Featherless, usada quando a primária fica sem crédito (401/402/403)."""
     checker_model: str
     github_token: SecretStr
     tenant_id: UUID
@@ -53,13 +55,39 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return value
 
+    maker_provider: Literal["anthropic", "featherless"] = "anthropic"
+    """`featherless` = Maker via API compatível com OpenAI em `FEATHERLESS_BASE_URL` (ADR-0011)."""
     maker_model: str = Field(default="claude-opus-5-5", min_length=1)
+    checker_fallback_model: str | None = None
+    """Fallback do Checker no mesmo provedor OpenAI-compatível (ex.: outro modelo do
+    Featherless). Sem ele e com Maker no Featherless, o fallback Claude não é usado."""
     maker_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
     github_fixtures_dir: Path | None = None
     """Fixtures sintéticas do GitHub para as tools simuladas (projeto sem repositório)."""
     github_project_repos: dict[UUID, str] = Field(default_factory=dict)
     """`GITHUB_PROJECT_REPOS` (JSON `{project_id: "owner/name"}`): projetos com GitHub real
     no worker. Projeto fora do mapa usa as tools simuladas (até o projeto guardar o repo)."""
+    google_drive_client_id: str = ""
+    """OAuth do Google Drive (ADR-0010), escopo `drive.readonly`. Sem os três valores e o mapa
+    de pastas, o Drive fica desligado."""
+    google_drive_client_secret: SecretStr | None = None
+    google_drive_refresh_token: SecretStr | None = None
+    google_drive_project_folders: dict[UUID, list[str]] = Field(default_factory=dict)
+    """`GOOGLE_DRIVE_PROJECT_FOLDERS` (JSON `{project_id: ["<folder_id>", ...]}`)."""
+    notion_token: SecretStr | None = None
+    """Token de integração interna do Notion (ADR-0010); só lê o que foi compartilhado."""
+    notion_project_sources: dict[UUID, list[str]] = Field(default_factory=dict)
+    """`NOTION_PROJECT_SOURCES` (JSON `{project_id: ["database:<id>", "page:<id>"]}`)."""
+
+    @field_validator(
+        "google_drive_client_secret",
+        "google_drive_refresh_token",
+        "notion_token",
+        "featherless_fallback_api_key",
+    )
+    @classmethod
+    def _empty_secret_is_none(cls, value: SecretStr | None) -> SecretStr | None:
+        return None if value is None or not value.get_secret_value().strip() else value
 
     @model_validator(mode="after")
     def _maker_and_checker_differ(self) -> Self:
@@ -67,6 +95,9 @@ class Settings(BaseSettings):
         no `ClaudeVerifier(maker_model=...)` (#9)."""
         if self.maker_model.strip().lower() == self.checker_model.strip().lower():
             raise ValueError("MAKER_MODEL e CHECKER_MODEL precisam ser modelos diferentes")
+        fallback = (self.checker_fallback_model or "").strip().lower()
+        if fallback and fallback == self.maker_model.strip().lower():
+            raise ValueError("MAKER_MODEL e CHECKER_FALLBACK_MODEL precisam ser modelos diferentes")
         return self
 
 

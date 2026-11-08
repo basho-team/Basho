@@ -26,6 +26,8 @@ flowchart LR
     fiscal[Contábil / Fiscal]
     basho((Basho))
     gh[(GitHub)]
+    gd[(Google Drive)]
+    nt[(Notion)]
     llmA[[Anthropic API<br/>Maker]]
     llmB[[Outro provedor LLM<br/>Checker]]
 
@@ -34,6 +36,8 @@ flowchart LR
     fiscal -- revisa dossiê, aprova dispêndios --> basho
     basho -- lê commits, PRs, issues --> gh
     basho -- cria issues/comentários autorizados --> gh
+    basho -- lê documentos (só leitura) --> gd
+    basho -- lê páginas e databases (só leitura) --> nt
     basho --> llmA
     basho --> llmB
 ```
@@ -54,6 +58,8 @@ flowchart TB
     api --> db
     worker --> db
     worker -- tools --> gh[(GitHub API)]
+    worker -- sync leitura --> gd[(Google Drive API)]
+    worker -- sync leitura --> nt[(Notion API)]
     worker --> maker[[Claude — Maker]]
     worker --> checker[[Checker — outro modelo]]
 ```
@@ -76,7 +82,7 @@ Monólito modular ([ADR-0001](adr/0001-monolito-modular.md)). Cada módulo é um
 | `expenses` | Dispêndios **informados por sistemas/responsáveis**, vinculados a atividades |
 | `compliance` | Checagens de completude, lacunas, dossiê, preparação (não decisão) de enquadramento |
 | `agent` | Orquestração Maker–Checker, tools, policy de permissões, jobs |
-| `connectors` | Adaptadores de fontes externas (GitHub no MVP) |
+| `connectors` | Adaptadores de fontes externas: GitHub (ADR-0007), Google Drive e Notion só leitura (ADR-0010) |
 | `audit` | Log de auditoria imutável de toda ação de agente e humano |
 
 ## 5. Evidence Ledger e estados
@@ -94,7 +100,7 @@ stateDiagram-v2
     needs_review --> draft
 ```
 
-- `evidence_events` é **append-only** (sem UPDATE/DELETE; reforçado por permissão de banco). Cada evento: `id`, `tenant_id`, `kind`, `source` (github, user, system…), `source_ref` (sha, PR#, doc id), `actor` (usuário ou agente+modelo), `payload` (JSONB), `content_hash` (SHA-256), `created_at`, `supersedes` (opcional).
+- `evidence_events` é **append-only** (sem UPDATE/DELETE; reforçado por permissão de banco). Cada evento: `id`, `tenant_id`, `kind`, `source` (github, google_drive, notion, user, system…), `source_ref` (sha, PR#, doc id), `actor` (usuário ou agente+modelo), `payload` (JSONB), `content_hash` (SHA-256), `created_at`, `supersedes` (opcional).
 - Vínculos: `Projeto → Atividade → Evidência ↔ Pessoa ↔ Dispêndio` (tabelas de link com `evidence_event_id`).
 - **Correção = novo evento** que `supersedes` o anterior. Um job recalcula dependências e move artefatos afetados para `needs_review`.
 
