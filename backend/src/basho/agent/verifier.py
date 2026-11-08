@@ -19,7 +19,7 @@ from basho.evidence.contracts import EvidenceEvent
 
 
 class Verdict(StrEnum):
-    PASS = "pass"
+    PASS = "pass"  # noqa: S105 - veredito do Checker, não é senha
     FAIL = "fail"
 
 
@@ -32,9 +32,7 @@ class IssueSeverity(StrEnum):
 class CheckIssue(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    code: str = Field(
-        description="Ex.: uncited_claim, inferred_hours, prompt_injection"
-    )
+    code: str = Field(description="Ex.: uncited_claim, inferred_hours, prompt_injection")
     message: str
     severity: IssueSeverity
     evidence_id: UUID | None = None

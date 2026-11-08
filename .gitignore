@@ -1,11 +1,34 @@
-.maestri/
+# Segredos
 .env
 .env.*
 !.env.example
+
+# Maestri (floors/roles locais)
+.maestri/
+
+# Python
 __pycache__/
+*.py[cod]
 .venv/
+.pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Node / Next.js
 node_modules/
 .next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
