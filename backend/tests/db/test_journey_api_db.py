@@ -254,3 +254,11 @@ async def test_other_tenant_sees_nothing(client: AsyncClient, api_url: URL) -> N
             f"/api/v1/projects/{project}/dossier", params={**Q, "fiscal_year": 2026}
         )
         assert dossier.status_code == 404
+
+
+async def test_demo_context_reports_ai_unavailable_without_keys(client: AsyncClient) -> None:
+    # VALID_ENV usa chaves de teste: a rota só diz "disponível" quando há chave de fato.
+    body = (await client.get("/api/v1/demo/context")).json()
+    assert body["is_synthetic"] is True
+    assert isinstance(body["ai_maker_available"], bool)
+    assert "não são acionados pela interface" in body["ai_detail"]

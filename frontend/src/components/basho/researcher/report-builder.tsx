@@ -62,6 +62,12 @@ export function ReportBuilder({ ctx, researcherId }: { ctx: DemoContext; researc
 
   return (
     <Card title="Construir relatório do período">
+      <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm">
+        <button type="button" className={secondaryButtonClass} disabled title={ctx.ai_detail}>
+          Gerar rascunho com IA (indisponível nesta demo)
+        </button>
+        <p className="mt-2 text-xs text-amber-900">{ctx.ai_detail}</p>
+      </div>
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
         <label className="block text-sm">Resumo do período
           <textarea className={inputClass} rows={2} minLength={20} required value={summary} onChange={(e) => setSummary(e.target.value)} />

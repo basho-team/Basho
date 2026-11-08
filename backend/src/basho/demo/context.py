@@ -52,7 +52,8 @@ class DemoContext(BaseModel):
     ai_maker_available: bool = False
     ai_checker_available: bool = False
     ai_detail: str = (
-        "Maker e Checker por LLM estão implementados (#8/#9), mas não há chave de API "
-        "configurada neste ambiente e não haverá custo adicional: a demo usa checks "
-        "determinísticos reais e relatórios montados pelo pesquisador."
+        "Maker e Checker por LLM estão implementados e testados com LLM simulado (#8/#9), "
+        "mas não são acionados pela interface desta demo: sem chave de API configurada e sem "
+        "custo adicional. A demo usa checks determinísticos reais e relatórios montados pelo "
+        "pesquisador."
     )
