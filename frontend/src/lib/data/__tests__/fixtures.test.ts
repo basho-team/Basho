@@ -43,7 +43,7 @@ describe("fixtures sintéticas × contrato provisório", () => {
     const flagged = [PROJECT, ...PEOPLE, ...EVIDENCE, ...EXPENSES];
 
     // Act
-    const unflagged = flagged.filter((item) => !item.synthetic);
+    const unflagged = flagged.filter((item) => !item.is_synthetic);
 
     // Assert
     expect(unflagged).toEqual([]);

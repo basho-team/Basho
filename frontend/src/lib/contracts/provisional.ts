@@ -29,7 +29,7 @@ export const ProjectSchema = z.object({
   organization_name: z.string().min(1),
   name: z.string().min(1),
   objective: z.string().min(1),
-  synthetic: z.boolean(),
+  is_synthetic: z.boolean(),
 });
 
 export const PersonSchema = z.object({
@@ -37,7 +37,7 @@ export const PersonSchema = z.object({
   name: z.string().min(1),
   role: RoleSchema,
   project_ids: z.array(Id),
-  synthetic: z.boolean(),
+  is_synthetic: z.boolean(),
 });
 
 /** Período de relato. Distinto do ano-base fiscal e do ano de envio. */
@@ -64,7 +64,7 @@ export const EvidenceVersionSchema = z.object({
   author: z.string().nullable(),
   locator: z.string().nullable(),
   excerpt: z.string().nullable(),
-  synthetic: z.boolean(),
+  is_synthetic: z.boolean(),
 });
 
 export const ClaimStatusSchema = z.enum(["supported", "pending", "disputed"]);
@@ -206,7 +206,7 @@ export const ExpenseSchema = z.object({
   allocations: z.array(AllocationSchema),
   excluded_reason: z.string().nullable(),
   evidence_ids: z.array(Id),
-  synthetic: z.boolean(),
+  is_synthetic: z.boolean(),
 });
 
 export const FindingSignalSchema = z.enum([
