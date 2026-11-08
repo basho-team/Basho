@@ -6,11 +6,15 @@ Interfaces combinadas na hora 0 para que backend, agente e frontend avancem em p
 | --- | --- | --- |
 | Eventos do ledger, estados de artefato | `backend/src/basho/evidence/contracts.py` | #4, #11, #21 |
 | Tools e níveis de permissão | `backend/src/basho/agent/tools.py` | #6, #7, #8 |
-| Artefato do Maker (registro de atividade) | `backend/src/basho/agent/artifacts.py` | #8, #9, #13 |
+| Artefato do Maker (registro de atividade, relatório do pesquisador) | `backend/src/basho/agent/artifacts.py` | #8, #9, #13, #38 |
+| Perfis de tarefa (`TaskKind`, `TaskProfile`, allowlist) | `backend/src/basho/agent/tasks.py` | #8, #10, #38 |
+| Execução do agente (`RunStatus`, `AgentRun`) | `backend/src/basho/agent/runs.py` | #10, #25, #38 |
+| Prompts versionados por perfil | `backend/src/basho/agent/prompts/<kind>/<versão>.md` | #8, #38 |
 | Checker / checks determinísticos | `backend/src/basho/agent/verifier.py` | #9 |
 | Schemas HTTP (pendências, correção, aprovação, dossiê) | `backend/src/basho/compliance/api_contracts.py` | #5, #12, #13 |
 | Fixtures GitHub sintéticas | `backend/tests/fixtures/github/` | #7, #8, #14 |
 | Exemplo de artefato | `backend/tests/fixtures/activity_record_draft.json` | #9, #12, #13 |
+| Exemplo de relatório do pesquisador | `backend/tests/fixtures/research_report_draft.json` | #9, #12, #38 |
 
 ## 1. Evidence Ledger (ADR-0003)
 - `NewEvidenceEvent` → entrada de `EvidenceService.append`; o serviço calcula `id`, `content_hash` e `created_at`. O `content_hash` é o SHA-256 (hex minúsculo) do JSON canônico (chaves ordenadas, separadores `,`/`:`, UTF-8, sem NaN) do **envelope de conteúdo imutável** — `tenant_id`, `project_id`, `kind`, `source`, `source_ref`, `actor`, `payload`, `supersedes`, `is_synthetic` — e não apenas do payload, para que a adulteração de qualquer desses campos seja detectável. `id` e `created_at` ficam fora do hash. O envelope é montado campo a campo e versionado (`HASH_VERSION`, coluna `hash_version`).
@@ -51,4 +55,16 @@ O frontend gera tipos a partir de `/openapi.json` e usa mocks desses schemas at�
 Todas sintéticas (`_synthetic: true`). O PR #42 tem experimento bem descrito; o #43 é experimento **sem justificativa** (caso principal da demo); o #44 contém **prompt injection** (caso de eval).
 
 ## 7. Handoff ResearchOps → Basho (ADR-0009, proposta)
-O mapa completo está na [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestrador.md#mapa-de-contratos-handoff--basho). Contratos novos previstos para a primeira entrega (relatório do pesquisador): `TaskProfile`/`TaskKind` (`agent/tasks.py`), `ClaimStatus` e `ResearchReportDraft` (`agent/artifacts.py`), `RunStatus`/`AgentRun` (`agent/runs.py`), `ReportingPeriod` e projeção `report_versions` (dados). Os contratos acima continuam válidos; os novos os estendem sem quebrá-los.
+O mapa completo está na [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestrador.md#mapa-de-contratos-handoff--basho). Os contratos abaixo estendem os anteriores sem quebrá-los (`ActivityRecordDraft`, `Claim` e demais seguem válidos). Testes em `backend/tests/test_agent_contracts.py`.
+
+**Perfis de tarefa** (`agent/tasks.py`). `TaskProfile(kind, prompt_version, allowed_tools, output_schema)`; perfil não é agente. A allowlist é validada em código contra o registro de tools (`MVP_TOOLS`, trocável via `context={"tool_registry": ...}`) e `AGENT_ALLOWED_LEVELS`: tool desconhecida ou de nível `formal` → `ToolNotAllowedError` (exposto como `ValidationError`). `TaskKind ∈ {research_report, coordination, technical_fiscal, investigation}`, mas só `research_report` tem perfil executável; `get_profile` dos demais → `ProfileNotAvailableError`. `RESEARCH_REPORT_PROFILE` usa as tools `read` + `ledger_record_draft` e `pending_item_open`, **sem `external`**. Prompt em `prompts/research_report/v1.md`, carregado por `load_prompt` (incluído no wheel).
+
+**Relatório do pesquisador** (`agent/artifacts.py`). `ResearchReportDraft(project_id, researcher_id, period, summary, claims[], experiments[], missing[], formal_hours_event_ids[], eligibility_note)`, sem campos numéricos de horas ou valores.
+- `ReportingPeriod(start, end, timezone, periodicity)`: datas inclusivas, `end ≥ start`, fuso IANA válido; período **operacional**, distinto do ano-base fiscal.
+- `ReportClaim.status` (`ClaimStatus`): `supported` ⇒ ≥ 1 `evidence_id` e sem `dispute_reason`; `pending` ⇒ `question` objetiva + `ask_role`; `disputed` ⇒ `dispute_reason` + evidências em conflito. `supported` é **só pré-condição de schema**: a correspondência real entre texto e evidência é verificada pelos checks determinísticos (#9) e pelo Checker.
+- `ExperimentOutcome(description, outcome, evidence_ids)` com `outcome ∈ {positive, negative, inconclusive}`. Pré-condição de schema: toda evidência de um claim `supported` da seção `result` precisa estar coberta por algum `ExperimentOutcome`. Isso não garante sozinho que nenhum resultado negativo foi omitido: a garantia vem do check determinístico (#9), que compara `experiments[]` com os experimentos do período no ledger.
+- `ReportClaim` proíbe campos de outro status e `evidence_ids` repetidos; `eligibility_note` é fixa no texto padrão (regra 7).
+
+**Execução** (`agent/runs.py`). `AgentRun(id, tenant_id, task_kind, prompt_version, status, correlation_id, parent_run_id, idempotency_key, attempts, max_attempts, created_at, updated_at, error)`. `RunStatus` é estado de execução, **nunca** de conformidade ou revisão. Transições (`ALLOWED_TRANSITIONS`, `can_transition`): `queued → running | failed`; `running → queued` (retry transitório) `| awaiting_input | completed | failed`; `awaiting_input`, `completed` e `failed` são terminais. A resposta humana a `awaiting_input` cria novo run com o mesmo `correlation_id` e `parent_run_id`. Invariantes: `attempts ≤ max_attempts`; `running` exige `attempts ≥ 1`; `failed` exige `RunError(code, message, retryable)` (sem segredos/PII); `completed` e `awaiting_input` sem `error`; `queued` com `error` só se `retryable` e com tentativas restantes; `updated_at ≥ created_at`. Mudança de estado só por `transition_run` / `fail_or_retry`, que revalidam (`model_copy` do Pydantic não valida); `fail_or_retry` decide por código entre retry e `failed`.
+
+Ainda previstos (dados): projeção `report_versions` e persistência de `agent_runs`.

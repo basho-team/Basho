@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.6",
     "sqlalchemy[asyncio]>=2",
     "structlog>=24.4",
+    "tzdata>=2024.1",
     "uvicorn[standard]>=0.32",
 ]
 
