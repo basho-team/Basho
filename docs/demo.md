@@ -53,6 +53,10 @@ variáveis de ambiente do projeto, **e refaça o deploy**:
 | `BASHO_DEMO_OPEN_ACCESS` | `true` |
 | `BASHO_DEMO_SESSION_SECRET` | 32+ caracteres aleatórios (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) |
 
+`BASHO_DEMO_SESSION_SECRET` é **obrigatório na Vercel também para o login por senha** (sem ele a sessão
+tentaria gravar em arquivo, que lá é somente leitura). O login por senha ainda exige
+`BASHO_DEMO_LOGIN_ENABLED=true` e `BASHO_DEMO_PASSWORD_HASH`; a entrada rápida dispensa os dois.
+
 A sessão passa a ser um token assinado (HMAC) que vale 4 h; o logout apaga o cookie, mas não revoga
 o token no servidor. Se o projeto tem **Vercel Authentication** ligada, o visitante precisa entrar
 na Vercel antes; desligue em *Settings → Deployment Protection* para uma demo pública.

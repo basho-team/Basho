@@ -15,7 +15,13 @@ export async function POST(request: Request): Promise<Response> {
   const accountId = await authenticateDemo(parsed.data);
   if (!accountId) return authError(401, "E-mail, senha ou função não autorizados.");
   await sessionStore().destroy(sessionToken(request));
-  const token = await createSession(accountId);
+  let token: string;
+  try { token = await createSession(accountId); } catch {
+    // Serverless sem disco: sem BASHO_DEMO_SESSION_SECRET a sessão em arquivo não pode ser gravada.
+    return authError(503, process.env.VERCEL
+      ? "Defina BASHO_DEMO_SESSION_SECRET (32 caracteres ou mais) neste ambiente."
+      : "Não foi possível iniciar a sessão neste ambiente.");
+  }
   const response = NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true, sameSite: "lax", path: "/", maxAge: SESSION_TTL_SECONDS,
