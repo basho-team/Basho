@@ -24,9 +24,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def test_activity_record_fixture_matches_maker_contract() -> None:
     # Arrange
-    raw = json.loads(
-        (FIXTURES / "activity_record_draft.json").read_text(encoding="utf-8")
-    )
+    raw = json.loads((FIXTURES / "activity_record_draft.json").read_text(encoding="utf-8"))
 
     # Act
     draft = ActivityRecordDraft.model_validate(raw)
@@ -76,7 +74,7 @@ def test_evidence_event_is_immutable() -> None:
 
     # Act / Assert
     with pytest.raises(ValidationError):
-        event.payload = {}
+        event.payload = {}  # type: ignore[misc]
 
 
 def test_github_fixtures_are_marked_synthetic() -> None:

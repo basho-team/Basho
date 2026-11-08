@@ -1,1 +1,1 @@
-"""Módulo agent: Maker–Checker, tools e policy."""
+"""Módulo agent: Maker-Checker, tools e policy."""
