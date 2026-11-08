@@ -2,17 +2,32 @@
  * Contrato entre o navegador e o BFF (route handlers em `app/api/bff`).
  *
  * Este arquivo é seguro para o cliente: não lê variáveis de ambiente nem contém segredos.
- * A identidade do revisor é escolhida pela troca de papel da demonstração. O BFF só limita
- * os pares (revisor, papel) a uma lista do servidor; ele NÃO autentica ninguém (placeholder
- * até #47). O segredo que o backend exige nunca passa pelo navegador.
+ * A identidade é escolhida pela troca de papel da demonstração: o navegador envia só o papel
+ * (`X-Demo-Role`) e, na revisão de relatório, o `reviewer_id`. O BFF só limita os pares
+ * (pessoa, papel) a uma lista do servidor; ele NÃO autentica ninguém (placeholder até #47).
+ * O segredo e os headers `X-Basho-*` que o backend exige nunca passam pelo navegador.
  */
 import { z } from "zod";
 
 export const BFF_BASE = "/api/bff";
 
+/** Papel da demonstração que o navegador declara ao BFF (nunca é um header `X-Basho-*`). */
+export const DEMO_ROLE_HEADER = "X-Demo-Role";
+
+const seg = encodeURIComponent;
+
 export const bffPaths = {
-  report: (versionId: string) => `${BFF_BASE}/reports/${encodeURIComponent(versionId)}`,
-  review: (versionId: string) => `${BFF_BASE}/reports/${encodeURIComponent(versionId)}/review`,
+  report: (versionId: string) => `${BFF_BASE}/reports/${seg(versionId)}`,
+  review: (versionId: string) => `${BFF_BASE}/reports/${seg(versionId)}/review`,
+  project: (projectId: string) => `${BFF_BASE}/projects/${seg(projectId)}`,
+  pending: (projectId: string, query: PendingQuery) => {
+    const params = new URLSearchParams({ limit: String(query.limit), offset: String(query.offset) });
+    if (query.status) params.set("status", query.status);
+    return `${BFF_BASE}/projects/${seg(projectId)}/pending?${params.toString()}`;
+  },
+  dossier: (projectId: string) => `${BFF_BASE}/projects/${seg(projectId)}/dossier`,
+  answer: (pendingId: string) => `${BFF_BASE}/pending/${seg(pendingId)}/answer`,
+  approval: (artifactId: string) => `${BFF_BASE}/artifacts/${seg(artifactId)}/approval`,
 };
 
 /** Códigos de erro que o BFF devolve no envelope `ApiError`. */
@@ -21,8 +36,12 @@ export const BffErrorCode = {
   notFound: "NOT_FOUND",
   forbidden: "FORBIDDEN",
   versionConflict: "VERSION_CONFLICT",
+  stateConflict: "STATE_CONFLICT",
   reviewUnavailable: "REVIEW_UNAVAILABLE",
+  identityUnavailable: "IDENTITY_UNAVAILABLE",
   invalidReview: "INVALID_REVIEW",
+  invalidAnswer: "INVALID_ANSWER",
+  tooLarge: "TOO_LARGE",
   backendUnavailable: "BACKEND_UNAVAILABLE",
   invalidResponse: "INVALID_RESPONSE",
   serverConfig: "SERVER_CONFIG",
@@ -61,7 +80,26 @@ export const BffReviewRequestSchema = z.strictObject({
 });
 export type BffReviewRequest = z.infer<typeof BffReviewRequestSchema>;
 
-/** Corpo extra de um 409: a versão atual para a UI recarregar. */
-export const VersionConflictDetailSchema = z.object({
-  current_version_id: z.uuid(),
+/** Limites do backend (`PendingAnswerIn.answer`, `MAX_PAGE_SIZE`). */
+export const MAX_ANSWER_LENGTH = 4000;
+export const MAX_PENDING_PAGE = 200;
+
+/** `POST /pending/{id}/answer`: só texto. `corrected_payload` fica fechado até a UI usar. */
+export const BffAnswerRequestSchema = z.strictObject({
+  answer: z.string().trim().min(1).max(MAX_ANSWER_LENGTH),
 });
+export type BffAnswerRequest = z.infer<typeof BffAnswerRequestSchema>;
+
+/** `POST /artifacts/{id}/approval` (formal, só gerente). */
+export const BffApprovalRequestSchema = z.strictObject({
+  decision: z.enum(["approve", "reject"]),
+  comment: z.string().trim().min(1).max(MAX_ANSWER_LENGTH).nullable().optional(),
+});
+export type BffApprovalRequest = z.infer<typeof BffApprovalRequestSchema>;
+
+export const PendingQuerySchema = z.object({
+  status: z.enum(["open", "answered", "resolved"]).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_PENDING_PAGE).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type PendingQuery = z.infer<typeof PendingQuerySchema>;

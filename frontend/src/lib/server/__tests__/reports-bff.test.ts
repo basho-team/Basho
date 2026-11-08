@@ -38,6 +38,10 @@ function reviewRequest(body: unknown, headers: Record<string, string> = {}): Req
   });
 }
 
+function getRequest(role = "researcher"): Request {
+  return new Request("http://bff.test/api/bff/reports/x", { headers: { "X-Demo-Role": role } });
+}
+
 const approve = { reviewer_id: RESEARCHER_ID, role: "researcher", decision: "text_approved", comment: "Confere." };
 
 function sentHeaders(): Headers {
@@ -45,24 +49,51 @@ function sentHeaders(): Headers {
 }
 
 describe("BFF GET /reports/{id}", () => {
-  test("repassa a versão sem headers de identidade nem segredo", async () => {
+  test("injeta a identidade do papel declarado e o segredo só na chamada ao backend", async () => {
     // Arrange
     const body = versionOut({ id: V2_ID, number: 2, supersedesId: V1_ID, currentId: V2_ID, currentNumber: 2 });
     fetchMock.mockResolvedValue(jsonResponse(body));
 
     // Act
-    const res = await getReportVersion(V2_ID, deps);
+    const res = await getReportVersion(V2_ID, getRequest(), deps);
 
     // Assert
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(body);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(`${BACKEND}/api/v1/reports/${V2_ID}`);
-    expect(sentHeaders().has(IDENTITY_SECRET_HEADER)).toBe(false);
+    expect(sentHeaders().get(USER_ID_HEADER)).toBe(RESEARCHER_ID);
+    expect(sentHeaders().get(ROLE_HEADER)).toBe("researcher");
+    expect(sentHeaders().get(IDENTITY_SECRET_HEADER)).toBe(SECRET);
+    expect(JSON.stringify(await getReportVersion(V2_ID, getRequest(), deps).then((r) => r.json()))).not.toContain(SECRET);
+  });
+
+  test.each([["sem papel", ""], ["papel fiscal", "fiscal"], ["papel inventado", "admin"]])(
+    "GET %s devolve 403 sem chamar o backend",
+    async (_label, role) => {
+      // Act
+      const res = await getReportVersion(V2_ID, getRequest(role), deps);
+
+      // Assert
+      expect(res.status).toBe(403);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("GET sem segredo configurado devolve 503 sem chamar o backend", async () => {
+    // Arrange
+    env = { ...env, reviewerIdentitySecret: null };
+
+    // Act
+    const res = await getReportVersion(V2_ID, getRequest(), deps);
+
+    // Assert
+    expect(res.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test("ID que não é UUID devolve 400 sem chamar o backend", async () => {
     // Act
-    const res = await getReportVersion("../../health", deps);
+    const res = await getReportVersion("../../health", getRequest(), deps);
 
     // Assert
     expect(res.status).toBe(400);
@@ -76,8 +107,8 @@ describe("BFF GET /reports/{id}", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ version: "quebrado" }));
 
     // Act
-    const stripped = await getReportVersion(V2_ID, deps);
-    const broken = await getReportVersion(V2_ID, deps);
+    const stripped = await getReportVersion(V2_ID, getRequest(), deps);
+    const broken = await getReportVersion(V2_ID, getRequest(), deps);
 
     // Assert
     expect(JSON.stringify(await stripped.json())).not.toContain("internal_note");
@@ -90,7 +121,7 @@ describe("BFF GET /reports/{id}", () => {
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
 
     // Act
-    const res = await getReportVersion(V2_ID, deps);
+    const res = await getReportVersion(V2_ID, getRequest(), deps);
 
     // Assert
     expect(res.status).toBe(502);
