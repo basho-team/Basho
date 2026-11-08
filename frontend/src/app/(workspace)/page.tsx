@@ -1,5 +1,9 @@
+"use client";
+
 import { ArrowRight, FlaskConical, LayoutDashboard, Scale } from "lucide-react";
 import Link from "next/link";
+import { useDemoUser } from "@/components/auth/session-provider";
+import { ROLE_HOME } from "@/lib/auth/shared";
 import { BashoMark } from "@/components/brand/logo";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -25,23 +29,24 @@ const ROLES = [
 ] as const;
 
 export default function Home() {
+  const user = useDemoUser();
   return (
     <div className="space-y-8">
-      <section className="bg-basho-texture relative overflow-hidden rounded-2xl px-6 py-9 text-white md:px-10 md:py-12">
-        <BashoMark className="pointer-events-none absolute -right-6 -bottom-8 size-56 text-white/[0.06] md:size-72" />
+      <section className="bg-basho-texture relative overflow-hidden rounded-2xl px-6 py-9 text-sidebar-foreground ring-1 ring-sidebar-border md:px-10 md:py-12">
+        <BashoMark className="pointer-events-none absolute -right-6 -bottom-8 size-56 text-sidebar-foreground/[0.07] md:size-72" />
         <div className="relative max-w-2xl space-y-3">
           <h1 className="font-serif text-3xl leading-tight font-semibold tracking-tight md:text-4xl">
             P&amp;D documentado, com a Lei do Bem no fluxo.
           </h1>
-          <p className="text-sm leading-relaxed text-white/75 md:text-base">
+          <p className="text-sm leading-relaxed text-sidebar-foreground/75 md:text-base">
             O sistema prepara os registros; as pessoas revisam, decidem e respondem. Cada afirmação aponta para a
             evidência que a sustenta.
           </p>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3" aria-label="Escolha um papel">
-        {ROLES.map((role) => (
+      <section className="grid gap-4 md:grid-cols-3" aria-label="Seu espaço de trabalho">
+        {ROLES.filter(role => role.href === ROLE_HOME[user.role]).map((role) => (
           <Link
             key={role.href}
             href={role.href}
@@ -65,6 +70,8 @@ export default function Home() {
           </Link>
         ))}
       </section>
+
+      <Link href="/integracoes" className="inline-flex rounded-lg border bg-card px-4 py-3 text-sm font-medium text-primary hover:bg-muted">Ver fontes e integrações</Link>
 
       <Card>
         <CardHeader>

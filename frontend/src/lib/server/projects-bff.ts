@@ -75,13 +75,13 @@ interface Opened {
 }
 
 /** Valida o ID, a configuração e o papel declarado. Devolve a resposta de erro se falhar. */
-function open(rawId: string, request: Request, deps: BffDeps): Opened | Response {
+async function open(rawId: string, request: Request, deps: BffDeps): Promise<Opened | Response> {
   const cid = deps.correlationId();
   const id = UuidSchema.safeParse(rawId);
   if (!id.success) return errorResponse(400, BffErrorCode.invalidRequest, COMMON_MESSAGES.invalidRequest, cid);
   const gate = openGate(deps, cid, ROUTE.unavailableCode, MESSAGES.unavailable);
   if (gate instanceof Response) return gate;
-  const identity = identityFromRole(request, gate.env);
+  const identity = await identityFromRole(request, gate.env, deps);
   if (!identity) return errorResponse(403, BffErrorCode.forbidden, COMMON_MESSAGES.noRole, cid);
   return { gate, identity, id: id.data };
 }
@@ -92,12 +92,12 @@ async function openPost(rawId: string, request: Request, deps: BffDeps, schema: 
   }
   const body = schema.safeParse(await readJsonBody(request));
   if (!body.success) return errorResponse(400, BffErrorCode.invalidRequest, COMMON_MESSAGES.invalidRequest, deps.correlationId());
-  const opened = open(rawId, request, deps);
+  const opened = await open(rawId, request, deps);
   return opened instanceof Response ? opened : { ...opened, body: body.data as unknown };
 }
 
 export async function getProject(rawId: string, request: Request, deps: BffDeps = defaultDeps): Promise<Response> {
-  const opened = open(rawId, request, deps);
+  const opened = await open(rawId, request, deps);
   if (opened instanceof Response) return opened;
   return forward(deps, opened.gate, {
     ...ROUTE,
@@ -117,9 +117,12 @@ export async function listPending(rawId: string, request: Request, deps: BffDeps
     offset: search.get("offset") ?? undefined,
   });
   if (!query.success) return errorResponse(400, BffErrorCode.invalidRequest, COMMON_MESSAGES.invalidRequest, deps.correlationId());
-  const opened = open(rawId, request, deps);
+  const opened = await open(rawId, request, deps);
   if (opened instanceof Response) return opened;
 
+  if (opened.identity.role !== "manager") {
+    return errorResponse(403, BffErrorCode.forbidden, MESSAGES.forbidden, opened.gate.cid);
+  }
   // Query montada só com valores validados: nada do navegador é repassado cru.
   const params = new URLSearchParams({ limit: String(query.data.limit), offset: String(query.data.offset) });
   if (query.data.status) params.set("status", query.data.status);
@@ -134,8 +137,11 @@ export async function listPending(rawId: string, request: Request, deps: BffDeps
 }
 
 export async function getDossier(rawId: string, request: Request, deps: BffDeps = defaultDeps): Promise<Response> {
-  const opened = open(rawId, request, deps);
+  const opened = await open(rawId, request, deps);
   if (opened instanceof Response) return opened;
+  if (opened.identity.role !== "manager") {
+    return errorResponse(403, BffErrorCode.forbidden, MESSAGES.forbidden, opened.gate.cid);
+  }
   return forward(deps, opened.gate, {
     ...ROUTE,
     method: "GET",
@@ -150,6 +156,9 @@ export async function getDossier(rawId: string, request: Request, deps: BffDeps 
 export async function postAnswer(rawId: string, request: Request, deps: BffDeps = defaultDeps): Promise<Response> {
   const opened = await openPost(rawId, request, deps, BffAnswerRequestSchema);
   if (opened instanceof Response) return opened;
+  if (opened.identity.role !== "manager") {
+    return errorResponse(403, BffErrorCode.forbidden, MESSAGES.forbidden, opened.gate.cid);
+  }
   return forward(deps, opened.gate, {
     ...ROUTE,
     method: "POST",

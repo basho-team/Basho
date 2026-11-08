@@ -157,3 +157,6 @@ docker-compose.yml  Postgres local
 ## 10. Recorte do MVP
 
 Ver [ADR-0007](adr/0007-recorte-mvp-hackathon.md).
+
+
+> **Demonstração local, proposta:** a [ADR-0011](adr/0011-login-local-demonstracao-por-funcao.md) documenta o login solicitado com contas sintéticas, sessões revogáveis e acesso por função no Next. Não substitui a autenticação de produção nem altera as decisões aceitas de isolamento, ledger e aprovação humana.

@@ -1,3 +1,4 @@
+import { testSession } from "@/test/demo-session";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { readServerEnv, ServerConfigError, type ServerEnv } from "@/lib/server/env";
 import {
@@ -27,19 +28,19 @@ beforeEach(() => {
     ],
   };
   fetchMock = vi.fn<typeof fetch>();
-  deps = { env: () => env, fetch: fetchMock, correlationId: () => "bff-test" };
+  deps = { env: () => env, fetch: fetchMock, correlationId: () => "bff-test", session: testSession };
 });
 
 function reviewRequest(body: unknown, headers: Record<string, string> = {}): Request {
   return new Request("http://bff.test/api/bff/reports/x/review", {
     method: "POST",
     body: typeof body === "string" ? body : JSON.stringify(body),
-    headers: { "Content-Type": "application/json", Origin: "http://bff.test", "Sec-Fetch-Site": "same-origin", ...headers },
+    headers: { "X-Test-Session": "researcher", "Content-Type": "application/json", Origin: "http://bff.test", "Sec-Fetch-Site": "same-origin", ...headers },
   });
 }
 
 function getRequest(role = "researcher"): Request {
-  return new Request("http://bff.test/api/bff/reports/x", { headers: { "X-Demo-Role": role } });
+  return new Request("http://bff.test/api/bff/reports/x", { headers: { "X-Demo-Role": role, "X-Test-Session": role } });
 }
 
 const approve = { reviewer_id: RESEARCHER_ID, role: "researcher", decision: "text_approved", comment: "Confere." };
@@ -274,4 +275,17 @@ describe("configuração do servidor", () => {
   ])("configuração inválida falha sem expor o valor (%o)", (source) => {
     expect(() => readServerEnv(source)).toThrow(ServerConfigError);
   });
+});
+
+test("header e corpo não podem promover uma sessão de pesquisador", async () => {
+  const request = reviewRequest({ ...approve, reviewer_id: MANAGER_ID, role: "manager" }, { "X-Demo-Role": "manager" });
+  expect((await postReview(V2_ID, request, deps)).status).toBe(403);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("pesquisador não pode ler relatório de outra pessoa", async () => {
+  const report = versionOut({ id: V2_ID, number: 2, supersedesId: V1_ID, currentId: V2_ID, currentNumber: 2 });
+  report.version.draft.researcher_id = MANAGER_ID;
+  fetchMock.mockResolvedValue(jsonResponse(report));
+  expect((await getReportVersion(V2_ID, getRequest(), deps)).status).toBe(403);
 });

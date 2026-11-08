@@ -1,15 +1,17 @@
 import "server-only";
 import type { z } from "zod";
-import { BffErrorCode, DEMO_ROLE_HEADER, ReviewerRoleSchema } from "@/lib/bff/contract";
+import { BffErrorCode } from "@/lib/bff/contract";
+import { userFromRequest, sameOriginJson } from "@/lib/auth/session";
+import { boundedJson } from "@/lib/auth/http";
+import type { DemoUser } from "@/lib/auth/shared";
 import type { ApiError } from "@/lib/contracts/provisional";
 import { readServerEnv, ServerConfigError, type DemoReviewer, type ServerEnv } from "@/lib/server/env";
 
 /**
  * Núcleo do BFF: identidade da demo, proteção de borda e repasse ao backend.
  *
- * ATENÇÃO: o BFF NÃO autentica. Quem alcança o Next escolhe um papel (e, na revisão, uma
- * pessoa) da lista `BASHO_DEMO_REVIEWERS`; a lista só limita os pares possíveis. Placeholder
- * até a auth real (#47): não publique o deploy sem uma camada de acesso.
+ * Local demo login binds identity to the verified session. Browser headers and body
+ * cannot grant a role. Backend identity remains provisional until production auth (#47).
  */
 
 /** Headers de identidade humana do backend (#39, #5 — `basho.identity`). */
@@ -19,18 +21,19 @@ export const IDENTITY_SECRET_HEADER = "X-Basho-Identity-Secret";
 
 const BACKEND_TIMEOUT_MS = 10_000;
 const MAX_BODY_BYTES = 64 * 1024;
-const JSON_CONTENT_TYPE = /^application\/json\s*(;|$)/i;
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 export interface BffDeps {
   env: () => ServerEnv;
   fetch: typeof fetch;
   correlationId: () => string;
+  session?: (request: Request) => Promise<DemoUser | null>;
 }
 
 export const defaultDeps: BffDeps = {
   env: () => readServerEnv(),
   fetch: (input, init) => fetch(input, init),
+  session: userFromRequest,
   correlationId: () => `bff-${crypto.randomUUID()}`,
 };
 
@@ -74,34 +77,17 @@ export function errorResponse(
  * Proteção contra CSRF nas ações humanas:
  * - exige `Content-Type: application/json`, o que força preflight em requisição cross-site
  *   e barra `<form enctype="text/plain">`;
- * - recusa `Origin` de outro host e `Sec-Fetch-Site` diferente de `same-origin`.
- * Clientes sem esses headers (ex.: curl na rede da demo) passam: isto não é autenticação.
+ * - exige Origin com protocolo, host e porta exatos; recusa Sec-Fetch-Site diferente de same-origin.
+ * Ausência de Origin é recusada. A sessão é validada separadamente.
  */
 export function isSameOriginJson(request: Request): boolean {
-  if (!JSON_CONTENT_TYPE.test(request.headers.get("content-type") ?? "")) return false;
-  const fetchSite = request.headers.get("sec-fetch-site");
-  if (fetchSite !== null && fetchSite !== "same-origin") return false;
-  const origin = request.headers.get("origin");
-  if (origin === null) return true;
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? new URL(request.url).host;
-  try {
-    return new URL(origin).host === host;
-  } catch {
-    return false;
-  }
+  return sameOriginJson(request);
 }
 
-/** Limite em bytes, checado pelo `Content-Length` antes de ler e de novo depois. */
+/** Limite em bytes checado antes e durante a leitura do stream. */
 export async function readJsonBody(request: Request): Promise<unknown> {
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (!Number.isFinite(declared) || declared > MAX_BODY_BYTES) return undefined;
-  const text = await request.text();
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return undefined;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
+  const body = await boundedJson(request, MAX_BODY_BYTES);
+  return body instanceof Response ? undefined : body;
 }
 
 export interface Gate {
@@ -127,17 +113,17 @@ export function openGate(deps: BffDeps, cid: string, unavailableCode: string, un
   return { env, cid };
 }
 
-/** Identidade pelo papel declarado em `X-Demo-Role`: a primeira pessoa da lista com esse papel. */
-export function identityFromRole(request: Request, env: ServerEnv): DemoReviewer | null {
-  const role = ReviewerRoleSchema.safeParse(request.headers.get(DEMO_ROLE_HEADER)?.trim().toLowerCase());
-  if (!role.success) return null;
-  return env.demoReviewers.find((r) => r.role === role.data) ?? null;
+/** Identidade da sessão validada e vinculada explicitamente ao usuário do backend. */
+export async function identityFromRole(request: Request, env: ServerEnv, deps: BffDeps): Promise<DemoReviewer | null> {
+  const user = await (deps.session ?? userFromRequest)(request);
+  if (!user || user.role === "fiscal" || !user.backendUserId) return null;
+  return env.demoReviewers.find(reviewer => reviewer.userId === user.backendUserId && reviewer.role === user.role) ?? null;
 }
 
-/** Identidade explícita (revisão de relatório): o par precisa estar na lista. */
-export function identityFromPair(env: ServerEnv, userId: string, role: string): DemoReviewer | null {
-  const reviewer = env.demoReviewers.find((r) => r.userId === userId.toLowerCase());
-  return reviewer && reviewer.role === role ? reviewer : null;
+/** O corpo nunca concede identidade: precisa corresponder à sessão validada. */
+export async function identityFromPair(request: Request, env: ServerEnv, userId: string, role: string, deps: BffDeps): Promise<DemoReviewer | null> {
+  const identity = await identityFromRole(request, env, deps);
+  return identity?.userId === userId.toLowerCase() && identity.role === role ? identity : null;
 }
 
 export interface ForwardSpec {
