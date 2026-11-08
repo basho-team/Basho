@@ -2,6 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.BASHO_E2E_URL ?? 'http://127.0.0.1:3101';
 const mode = process.env.BASHO_E2E_MODE ?? 'api';
+// A apresentação compartilhada tem proteção explícita contra escrita por estes testes.
+if (process.env.BASHO_BFF_URL && new URL(process.env.BASHO_BFF_URL).port === '3765') {
+  throw new Error('A porta 3765 é reservada à apresentação. Use uma cópia com banco isolado.');
+}
 if (!['api', 'mock'].includes(mode)) throw new Error('BASHO_E2E_MODE deve ser api ou mock.');
 
 export default defineConfig({

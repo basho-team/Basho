@@ -82,6 +82,11 @@ test('jornada por cliques com projeto de teste isolado e persistência real no B
   expect((await approvedV2).status()).toBe(201);
   const stored = await page.request.get(`${base}/api/bff/reports/${v2}`);
   expect((await stored.json()).status.researcher.state).toBe('text_approved');
+  const rechecked = page.waitForResponse((r) => r.url().endsWith(`/reports/${v2}/checks`));
+  await page.getByRole('button', { name: 'Rodar verificações' }).click();
+  const checkedV2 = await rechecked;
+  expect((await checkedV2.json()).deterministic.verdict).toBe('pass');
+  await expect(page.getByText('aprovado', { exact: true })).toBeVisible();
 
   await page.getByRole('combobox', { name: /^Atuando como/ }).first().selectOption(manager.id);
   await expect(page.getByRole('heading', { name: 'Consolidação gerencial' })).toBeVisible();

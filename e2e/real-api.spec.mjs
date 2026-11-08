@@ -49,6 +49,9 @@ test('API real: contexto sintético, relatórios persistidos e origem no dossiê
   for (const item of dossier.items) {
     expect(versions.has(item.version_id), 'Dossiê deve apontar para versão atual realmente listada.').toBe(true);
     const original = itemsById.get(`${item.version_id}:${item.item_kind}:${item.item_id}`);
+    const owner = reports.find((report) => report.version.id === item.version_id);
+    expect(item.researcher_id).toBe(owner.version.draft.researcher_id);
+    expect(item.researcher_review_id).toBe(owner.status.researcher.state === 'text_approved' ? owner.status.researcher.review_id : null);
     expect(original, 'ID do item deve resolver na versão exata, não apenas ter formato UUID.').toBeDefined();
     const expectedIds = (original.evidence_ids ?? []).filter((id) => {
       const event = evidenceById.get(id);
@@ -63,7 +66,8 @@ test('API real: contexto sintético, relatórios persistidos e origem no dossiê
       const event = evidenceById.get(source.reference.slice('evidence:'.length));
       expect(event).toBeDefined();
       expect(source.revision).toBe(event.content_hash);
-      expect(source.locator).not.toBe('');
+      expect(source.locator).toBe(`report:${item.version_id}/${item.item_kind}/${item.item_id}`);
+      expect(source.origin).toBe(event.source);
     }
   }
   expect(resolvedSources, 'O seed deve exercitar ao menos uma origem realmente resolvida.').toBeGreaterThan(0);
