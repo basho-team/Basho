@@ -44,9 +44,11 @@ _ELIGIBILITY = re.compile(
 )
 _INJECTION = re.compile(
     r"(?:ignor(?:e|ar|em)|desconsider(?:e|ar|em))\s+(?:as\s+|todas\s+as\s+|all\s+|the\s+)?"
-    r"(?:\w+\s+)?(?:instru[cç][oõ]es|instructions)"
+    r"(?:\w+\s+)?(?:instru[cç][oõ]es|instructions|regras|orienta[cç][oõ]es|rules)"
     r"|system\s+prompt|voc[eê]\s+agora\s+[eé]|you\s+are\s+now"
-    r"|(?:marque|aprove)m?\s+todas",
+    r"|(?:marque|aprove)m?\s+todas"
+    r"|marque(?:m)?\s+(?:est[ea]s?|ess[ea]s?|[oa]s?)\s+(?:\w+\s+){0,3}como\s+"
+    r"(?:aprovad[oa]s?|eleg[ií]ve(?:l|is)|qualificad[oa]s?)",
     re.IGNORECASE,
 )
 
