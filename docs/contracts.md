@@ -23,6 +23,14 @@ Interfaces combinadas na hora 0 para que backend, agente e frontend avancem em p
 - Correção = novo evento `USER_CORRECTION` com `supersedes`; dependentes → `needs_review` (#11).
 - Eventos de agente: `actor.type = agent`, `actor.id ∈ {maker, checker}`, `actor.model` obrigatório. `source = agent` vale se, e somente se, `actor.type = agent`; `source = user` exige `actor.type = user`; dados formais exigem actor user ou system (system só com `formal_system`); `USER_CORRECTION`/`USER_CONFIRMATION` exigem actor e source `user`.
 
+### 1.1 Propagação de correções (#11)
+`basho.evidence.CorrectionPropagation(session)` (transação do chamador, `tenant_session`; roda como `basho_api` ou `basho_worker`):
+- `propagate(tenant_id, correction_event_id) -> PropagationResult(marked, already_marked)`: a correção é qualquer evento com `supersedes`. Todo `activity_record` do mesmo projeto que cita o evento substituído — id em qualquer `draft.**.evidence_ids` ou `draft.**.formal_hours_event_ids` — vai para `needs_review`, e o mesmo vale, transitivamente, para quem cita esse artefato (até `MAX_DEPTH = 10` saltos, sem ciclos). Artefato já substituído por versão nova não é marcado. É idempotente por `(artefato, correção)`: reprocessar não duplica, e uma correção nova marca de novo.
+- Cada transição é um **novo** evento `status_changed` (`source=system`, `actor={type: system, id: "propagation"}`, `source_ref="artifact:<id>"`) com o payload `{artifact_event_id, status: "needs_review", reason: "evidence_superseded", cause_event_id, superseded_event_id, via_event_id, depth}`. Nada é atualizado.
+- `pending_reviews(tenant_id, project_id) -> list[PendingReview]` lista os artefatos cujo **último** `status_changed` é `needs_review` e que não foram substituídos (pendências, #5).
+- `reopen_as_draft(tenant_id, artifact_event_id)`: `needs_review → draft` para o worker (#10) reabrir o ciclo Maker–Checker, com payload `{status: "draft", reason: "reopened_for_maker", cause_event_id, superseded_event_id, previous_status_event_id}`. Só a partir de `needs_review`; aprovar e rejeitar continuam humanos (ADR-0005).
+- **Quem chama:** quem grava a correção (revisão de relatório no #39/#5, correções de usuário) chama `propagate` na mesma transação, ou o worker (#10) consome depois. Transições do mesmo artefato na mesma transação compartilham `created_at`; nesse caso o desempate é por `id`, sem ordem garantida.
+
 ## 2. Tools (ADR-0005)
 - `ToolSpec(name, description, level, input_schema, requires_approval)`; registro falha se faltar `level`.
 - `FORMAL` nunca é dado ao agente (`AGENT_ALLOWED_LEVELS`).
@@ -38,6 +46,15 @@ Tools do MVP: `github_list_commits`, `github_get_pull_request`, `ledger_query_ev
 **Aprovação** (`agent/approvals.py`). Append-only: `tool_approval_requests` (imutável, guarda a entrada proposta) + `tool_approval_decisions` (`UNIQUE(approval_id)`); estado derivado `pending | approved | rejected`. `decide_approval` grava a decisão e o audit; **não executa** a tool (o worker executa depois, #10). Endpoint humano fica para quando houver auth.
 
 **Audit** (módulo `audit`). `NewAuditEntry(tenant_id, event_type, actor_type, actor_id?, run_id?, tool, level?, decision, outcome, reason_code?, input_summary, approval_id?)`; `input_summary` = só chaves de primeiro nível + tamanho em bytes, **nunca valores**. Tabela `audit_log` fora do ledger (registro operacional, não evidência). Migração `0004_tool_audit`: as três tabelas são append-only (trigger), com RLS forçada por `tenant_id` e só `SELECT, INSERT` para `basho_api`/`basho_worker` — exceto `tool_approval_decisions`, em que o `basho_worker` só tem `SELECT` (o agente não aprova o próprio pedido). CHECKs compostos repetem no banco as invariantes de `NewAuditEntry`. `input_summary.keys` só traz chaves declaradas no `input_schema` da tool.
+
+### 2.1 Conector GitHub (#7)
+`basho.connectors.github`:
+- `GithubClient`: httpx, token só de `GITHUB_TOKEN` (`SecretStr`), paginação por `Link`. Erros viram `GithubError(code)`: `github_unauthorized | github_not_found | github_rate_limited | github_http_error | github_network | github_invalid_response`. `retryable` vale para rate limit, rede e HTTP 5xx.
+- `RepoRef("owner/name")`: validado, vem da configuração do projeto e **nunca do modelo**.
+- `GithubIngestService(session, client).sync(tenant, projeto, repo)`: grava `COMMIT_OBSERVED` (`source_ref` = `owner/repo@sha`) e `PULL_REQUEST_OBSERVED` (`owner/repo#n`), com `source=github` e actor `system/github-connector`.
+  - Idempotente por `source_ref` (`EvidenceService.existing_source_refs`), com advisory lock por tenant+projeto+repo.
+  - O payload guarda só o login do autor (sem e-mail ou nome); texto truncado em 20 mil caracteres.
+- `build_github_tools(client, repo)`: versões reais de `github_list_commits` e `github_get_pull_request` (`read`, texto só em `untrusted_data`) e de `github_create_issue` (`external`, `requires_approval`; a policy não executa sem decisão humana). Usam as mesmas specs das simuladas.
 
 ## 3. Artefato do Maker
 `ActivityRecordDraft`: `claims[]` por seção (desafio, hipótese, método, resultado, incerteza), cada um com ≥ 1 `evidence_id`; horas/participantes só como **referência** a eventos formais; lacunas em `missing[]` viram pendências com pergunta objetiva; `eligibility_note` nunca afirma enquadramento.
