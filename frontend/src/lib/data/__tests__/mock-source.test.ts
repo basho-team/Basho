@@ -64,6 +64,8 @@ describe("mock-source: revisões versionadas", () => {
     // Act
     const v3 = await source.submitCorrection({
       reportVersionId: v2.version.id,
+      reviewerId: "p-bruno",
+      role: "researcher",
       claimId,
       newText: "Integrou a coleta das bancadas B e C.",
       justification: "Faltou a bancada C.",

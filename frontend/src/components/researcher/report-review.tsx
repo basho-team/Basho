@@ -12,7 +12,7 @@ import { AwaitingState, ErrorState, LoadingState, StaleBanner } from "@/componen
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { ReportDetail } from "@/lib/contracts/provisional";
-import { useProjectContext, useReport, useSubmitReview } from "@/lib/queries";
+import { isVersionConflict, useProjectContext, useReport, useSubmitReview } from "@/lib/queries";
 
 const MIN_JUSTIFICATION = 3;
 
@@ -33,7 +33,14 @@ function VersionNav({ detail, reportId }: { detail: ReportDetail; reportId: stri
   );
 }
 
-function ApprovalPanel({ detail, authorName }: { detail: ReportDetail; authorName: string }) {
+interface ApprovalPanelProps {
+  detail: ReportDetail;
+  authorName: string;
+  /** A versão deixou de ser a atual durante a revisão (409): a tela recarrega e avisa. */
+  onConflict: (staleVersion: number) => void;
+}
+
+function ApprovalPanel({ detail, authorName, onConflict }: ApprovalPanelProps) {
   const [justification, setJustification] = useState("");
   const review = useSubmitReview();
   const { version } = detail;
@@ -54,17 +61,26 @@ function ApprovalPanel({ detail, authorName }: { detail: ReportDetail; authorNam
         <strong>v{version.version}</strong> e não é aprovação fiscal.
       </p>
       <TextField label="Comentário da aprovação" value={justification} onChange={setJustification} />
-      {review.isError && <ErrorState error={review.error} onRetry={() => review.reset()} />}
+      {review.isError && !isVersionConflict(review.error) && (
+        <ErrorState error={review.error} onRetry={() => review.reset()} />
+      )}
       <Button
         disabled={justification.trim().length < MIN_JUSTIFICATION || review.isPending}
         onClick={() =>
-          review.mutate({
-            reportVersionId: version.id,
-            reviewerId: version.author_id,
-            role: "researcher",
-            decision: "approve",
-            justification: justification.trim(),
-          })
+          review.mutate(
+            {
+              reportVersionId: version.id,
+              reviewerId: version.author_id,
+              role: "researcher",
+              decision: "approve",
+              justification: justification.trim(),
+            },
+            {
+              onError: (error) => {
+                if (isVersionConflict(error)) onConflict(version.version);
+              },
+            },
+          )
         }
       >
         {review.isPending ? "Registrando…" : `Aprovar versão v${version.version}`}
@@ -75,17 +91,19 @@ function ApprovalPanel({ detail, authorName }: { detail: ReportDetail; authorNam
 
 export function ReportReview({ reportId, version }: { reportId: string; version?: number }) {
   const router = useRouter();
+  // O contexto só dá o nome de quem escreveu; sem ele (API real ainda sem a rota), a tela segue.
   const context = useProjectContext();
   const report = useReport(reportId, version);
+  const [replacedVersion, setReplacedVersion] = useState<number | null>(null);
 
   if (report.isError) return <ErrorState error={report.error} onRetry={() => report.refetch()} />;
-  if (context.isError) return <ErrorState error={context.error} onRetry={() => context.refetch()} />;
   if (report.isPending || context.isPending) return <LoadingState label="Carregando relatório…" />;
 
   const detail = report.data;
   const current = detail.version;
   const isLatest = current.version === detail.latest_version;
-  const authorName = context.data.people.find((p) => p.id === current.author_id)?.name ?? "pesquisador";
+  const authorName = context.data?.people.find((p) => p.id === current.author_id)?.name ?? "pesquisador";
+  const showReplaced = replacedVersion !== null && replacedVersion !== current.version;
 
   return (
     <div className="space-y-8">
@@ -93,11 +111,21 @@ export function ReportReview({ reportId, version }: { reportId: string; version?
         title={`Relatório de ${authorName} · v${current.version}`}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
-            {context.data.period.label} <ReviewStateBadge state={current.review_state} />
+            {detail.period_label} <ReviewStateBadge state={current.review_state} />
           </span>
         }
         actions={<VersionNav detail={detail} reportId={reportId} />}
       />
+
+      {showReplaced && (
+        <Alert>
+          <AlertTitle>A v{replacedVersion} foi substituída enquanto você revisava</AlertTitle>
+          <AlertDescription>
+            Nada foi registrado para ela. Recarregamos o relatório: esta é a v{current.version}, a versão atual. Revise
+            de novo se ainda concordar.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {!isLatest && (
         <Alert>
@@ -137,6 +165,8 @@ export function ReportReview({ reportId, version }: { reportId: string; version?
               <CorrectionForm
                 claim={claim}
                 reportVersionId={current.id}
+                reviewerId={current.author_id}
+                onConflict={() => setReplacedVersion(current.version)}
                 onDone={() => router.replace(`/pesquisador/relatorios/${reportId}`)}
               />
             ) : null
@@ -146,7 +176,7 @@ export function ReportReview({ reportId, version }: { reportId: string; version?
 
       <Section title="Revisão">
         {isLatest ? (
-          <ApprovalPanel detail={detail} authorName={authorName} />
+          <ApprovalPanel key={current.id} detail={detail} authorName={authorName} onConflict={setReplacedVersion} />
         ) : (
           <p className="text-sm text-muted-foreground">Versões antigas ficam no histórico e não podem ser aprovadas.</p>
         )}

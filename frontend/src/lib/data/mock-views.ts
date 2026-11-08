@@ -45,6 +45,7 @@ export function reportDetail(state: MockState, reportId: string, version?: numbe
   const evidenceIds = new Set(selected.claims.flatMap((c) => c.evidence_ids));
   return {
     version: selected,
+    period_label: PERIOD.label,
     latest_version: latest.version,
     history: all.map((v) => ({ id: v.id, version: v.version, created_at: v.created_at })),
     reviews: state.reviews.filter((r) => r.report_version_id === selected.id),

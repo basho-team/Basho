@@ -9,6 +9,10 @@ const SECTION_LABEL: Record<Claim["section"], string> = {
   result: "Resultado",
   hours: "Horas",
   next_steps: "Próximos passos",
+  technological_challenge: "Desafio tecnológico",
+  hypothesis: "Hipótese",
+  method: "Método",
+  uncertainty: "Incerteza",
 };
 
 interface ClaimListProps {
@@ -31,7 +35,7 @@ export function ClaimList({ claims, evidence, renderAction }: ClaimListProps) {
             {claim.corrected_by_human && <Badge variant="outline">Corrigido por pessoa</Badge>}
           </div>
           <p className={claim.status === "pending" ? "text-muted-foreground italic" : undefined}>{claim.text}</p>
-          <p className="text-xs text-muted-foreground">Por quê: {claim.justification}</p>
+          {claim.justification && <p className="text-xs text-muted-foreground">Por quê: {claim.justification}</p>}
           <SourceList evidence={evidence} ids={claim.evidence_ids} />
           {renderAction?.(claim)}
         </li>

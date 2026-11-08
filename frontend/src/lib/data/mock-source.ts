@@ -13,6 +13,8 @@ import {
   ReviewSchema,
   RunSchema,
 } from "@/lib/contracts/provisional";
+import { DossierSchema } from "@/lib/api/projects";
+import { mockDossier } from "@/lib/data/mock-dossier";
 import { PEOPLE, PERIOD, PROJECT } from "@/lib/data/mock-fixtures";
 import {
   advance,
@@ -128,5 +130,11 @@ export function createMockSource(options: MockSourceOptions = {}): DataSource {
         const [request, next] = applyRespond(s, input, t);
         return [PendingRequestSchema.parse(request), next];
       }),
+    // A simulação não tem artefatos do Maker com veredito: a aprovação formal só existe na API.
+    decideArtifact: () =>
+      read("decideArtifact", () =>
+        fail("NOT_AVAILABLE_IN_MOCK", "A aprovação formal de artefatos só existe com NEXT_PUBLIC_DATA_SOURCE=api."),
+      ),
+    getDossier: () => read("getDossier", () => DossierSchema.parse(mockDossier())),
   };
 }

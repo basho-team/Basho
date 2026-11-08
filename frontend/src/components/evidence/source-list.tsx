@@ -41,13 +41,20 @@ export function SourceItem({ evidence }: { evidence: EvidenceVersion }) {
 
 export function SourceList({ evidence, ids }: { evidence: EvidenceVersion[]; ids: string[] }) {
   const cited = evidence.filter((e) => ids.includes(e.id));
-  if (cited.length === 0) {
+  // Citada mas sem conteúdo carregado (a API ainda não expõe as evidências): mostra o ID.
+  const unresolved = ids.filter((id) => !cited.some((e) => e.id === id));
+  if (ids.length === 0) {
     return <p className="text-sm text-muted-foreground">Sem fonte vinculada.</p>;
   }
   return (
     <ul className="space-y-2">
       {cited.map((e) => (
         <SourceItem key={e.id} evidence={e} />
+      ))}
+      {unresolved.map((id) => (
+        <li key={id} className="rounded-md border border-dashed p-3 font-mono text-xs break-all text-muted-foreground">
+          Evidência citada {id} · conteúdo ainda não disponível nesta tela
+        </li>
       ))}
     </ul>
   );

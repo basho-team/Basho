@@ -71,11 +71,23 @@ export const ClaimStatusSchema = z.enum(["supported", "pending", "disputed"]);
 
 export const ClaimSchema = z.object({
   id: Id,
-  section: z.enum(["activity", "experiment", "result", "hours", "next_steps"]),
+  // As cinco últimas são as seções reais do backend (`ClaimSection`, #39).
+  section: z.enum([
+    "activity",
+    "experiment",
+    "result",
+    "hours",
+    "next_steps",
+    "technological_challenge",
+    "hypothesis",
+    "method",
+    "uncertainty",
+  ]),
   text: z.string().min(1),
   status: ClaimStatusSchema,
   evidence_ids: z.array(Id),
-  justification: z.string().min(1),
+  /** `null` quando a fonte não traz justificativa por afirmação (API real). */
+  justification: z.string().min(1).nullable(),
   corrected_by_human: z.boolean(),
 });
 
@@ -92,6 +104,11 @@ export const ReviewStateSchema = z.enum([
   "awaiting_researcher",
   "awaiting_manager",
   "available_to_fiscal",
+  // API real (#39): texto aprovado por pesquisador e gerente na versão atual. Não é o
+  // gate de encaminhamento ao fiscal, que continua sendo do backend.
+  "text_approved",
+  // API real: versão que já foi substituída por outra mais nova.
+  "superseded",
 ]);
 
 export const ReportVersionSchema = z.object({
@@ -117,8 +134,9 @@ export const ReviewSchema = z.object({
   reviewer_id: Id,
   role: RoleSchema,
   decision: z.enum(["approve", "request_changes"]),
-  justification: z.string().min(1),
-  created_at: Timestamp,
+  /** `null` quando a fonte só informa o estado da revisão (API real, `ReportStatus`). */
+  justification: z.string().min(1).nullable(),
+  created_at: Timestamp.nullable(),
 });
 
 export const ReportSummarySchema = z.object({
@@ -136,6 +154,8 @@ export const ReportSummarySchema = z.object({
 
 export const ReportDetailSchema = z.object({
   version: ReportVersionSchema,
+  /** Rótulo do período desta versão, para a tela não depender do contexto do projeto. */
+  period_label: z.string().min(1),
   latest_version: z.number().int().positive(),
   history: z.array(
     z.object({ id: Id, version: z.number().int().positive(), created_at: Timestamp }),
@@ -157,7 +177,8 @@ export const RunSchema = z.object({
 });
 
 export const PendingTargetSchema = z.object({
-  type: z.enum(["report", "expense", "finding"]),
+  // `artifact` = artefato do Maker na API real (#5).
+  type: z.enum(["report", "expense", "finding", "artifact"]),
   id: Id,
   label: z.string().min(1),
 });
@@ -167,12 +188,28 @@ export const PendingRequestSchema = z.object({
   target: PendingTargetSchema,
   reason: z.string().min(1),
   evidence_needed: z.string().min(1),
-  requested_by_role: RoleSchema,
+  /** `null` = gerada pelo sistema (veredito do Checker, lacuna do Maker), não por uma pessoa. */
+  requested_by_role: RoleSchema.nullable(),
   assignee_role: RoleSchema,
   assignee_id: Id.nullable(),
   status: z.enum(["open", "answered", "resolved"]),
   response: z.string().nullable(),
   created_at: Timestamp,
+  /**
+   * Tipo da pendência na API real (#5). `approval_required` se resolve pela aprovação formal
+   * do artefato, não por resposta (contrato do #54). Ausente no mock.
+   */
+  kind: z
+    .enum([
+      "missing_justification",
+      "missing_activity_record",
+      "checker_disagreement",
+      "approval_required",
+      "tool_failure",
+      "needs_review",
+    ])
+    .nullable()
+    .optional(),
 });
 
 export const ConsolidationSchema = z.object({
