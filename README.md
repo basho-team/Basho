@@ -83,3 +83,7 @@ A CI (`.github/workflows/ci.yml`) roda esses checks em todo PR para `main`.
 
 Siga `CLAUDE.md` e `docs/engineering-practices.md`: uma issue → uma branch → um PR,
 Conventional Commits e o template de PR em `.github/pull_request_template.md`.
+
+## Demo local
+
+`scripts/demo/up.sh` sobe banco, seed, API e interface. Roteiro e limitações em [docs/demo-local.md](docs/demo-local.md).
