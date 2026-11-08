@@ -62,6 +62,8 @@ from basho.connectors.github import (
     RepoRef,
     build_github_tools,
 )
+from basho.connectors.http import ConnectorError
+from basho.connectors.sources import DocumentSources, document_sources, sync_project_documents
 from basho.db import tenant_session
 from basho.evidence.contracts import ArtifactStatus
 from basho.logging import get_logger
@@ -94,6 +96,52 @@ def github_wiring(settings: Settings, http_client: httpx.AsyncClient) -> GithubW
         return None
     repos = {project: RepoRef(name) for project, name in settings.github_project_repos.items()}
     return GithubWiring(client=GithubClient(token=token, http_client=http_client), repos=repos)
+
+
+def maker_and_verifier(
+    settings: Settings, http_client: httpx.AsyncClient
+) -> tuple[MessagesClient, Verifier]:
+    """Cliente do Maker e Checker conforme `MAKER_PROVIDER` (ADR-0004/0013).
+
+    `featherless`: Maker e Checker no mesmo provedor OpenAI-compatível, com modelos diferentes
+    (validado em `Settings`); fallback do Checker só se `CHECKER_FALLBACK_MODEL` existir.
+    `anthropic`: Maker no Claude; Checker no Featherless com fallback Claude de contexto limpo.
+    """
+    import anthropic
+
+    from basho.agent.checker import ClaudeVerifier, FallbackVerifier, OpenAICompatibleVerifier
+    from basho.agent.openai_compat import OpenAICompatibleMessagesClient
+
+    base_url = str(settings.featherless_base_url)
+    keys = [settings.featherless_api_key]
+    if settings.featherless_fallback_api_key is not None:
+        keys.append(settings.featherless_fallback_api_key)
+    models = [settings.checker_model]
+    if settings.maker_provider == "featherless" and settings.checker_fallback_model:
+        models.append(settings.checker_fallback_model)
+    # Ordem: modelo do Checker em cada chave, depois o modelo de fallback em cada chave.
+    chain: list[Verifier] = [
+        OpenAICompatibleVerifier(
+            base_url=base_url, api_key=key, model_id=model, http_client=http_client
+        )
+        for model in models
+        for key in keys
+    ]
+    checker: Verifier = chain[-1]
+    for verifier in reversed(chain[:-1]):
+        checker = FallbackVerifier(verifier, checker)
+    if settings.maker_provider == "featherless":
+        maker: MessagesClient = OpenAICompatibleMessagesClient(
+            base_url=base_url,
+            api_key=settings.featherless_api_key,
+            fallback_api_keys=keys[1:],
+            http_client=http_client,
+        )
+        return maker, checker
+    claude = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
+    return claude, FallbackVerifier(
+        checker, ClaudeVerifier(client=claude, maker_model=settings.maker_model)
+    )
 
 
 def github_client_wiring(settings: Settings, http_client: httpx.AsyncClient) -> GithubWiring | None:
@@ -138,6 +186,7 @@ class WorkerConfig:
     model: ModelSettings
     github_fixtures: GithubFixtures | None = None
     github: GithubWiring | None = None
+    documents: DocumentSources | None = None
 
     def repo_for(self, project_id: UUID) -> RepoRef | None:
         return self.github.repos.get(project_id) if self.github is not None else None
@@ -181,7 +230,7 @@ class Worker:
             await self._fail(stored, error, MakerResult(MakerStatus.FAILED, (), 0))
             return stored.run.id
         self._repos[stored.project_id] = await self._repo_for(stored.project_id)
-        sync_error = await self._sync_github(stored)
+        sync_error = await self._sync_github(stored) or await self._sync_documents(stored)
         if sync_error is not None:
             await self._fail(stored, sync_error, MakerResult(MakerStatus.FAILED, (), 0))
             return stored.run.id
@@ -284,6 +333,29 @@ class Worker:
         )
         return None
 
+    async def _sync_documents(self, stored: StoredRun) -> RunError | None:
+        """Ingere revisões do Drive/Notion do projeto antes do Maker (ADR-0012).
+
+        O Maker encontra os documentos via `ledger_query_events` (sem tool nova). Revisão nova de
+        documento já citado dispara a propagação `needs_review` (#11).
+        """
+        sources = self._config.documents
+        if sources is None or not sources.configured:
+            return None
+        try:
+            await sync_project_documents(
+                sources,
+                self._factory,
+                self._config.tenant_id,
+                stored.project_id,
+                since=_period_start(stored),
+                is_synthetic=stored.is_synthetic,
+            )
+        except ConnectorError as exc:
+            message = f"falha ao sincronizar documentos ({exc.connector})"
+            return RunError(code=exc.code, message=message, retryable=exc.retryable)
+        return None
+
     def _tools(self, project_id: UUID) -> list[Tool]:
         """Ledger e GitHub reais quando o projeto tem repositório; senão GitHub simulado.
 
@@ -381,9 +453,6 @@ class Worker:
 
 async def run_forever(settings: Settings) -> None:  # pragma: no cover - processo real
     """Entry point do processo worker: valida o role, monta clientes e consome a fila."""
-    import anthropic
-
-    from basho.agent.checker import ClaudeVerifier, FallbackVerifier, OpenAICompatibleVerifier
     from basho.db import (
         API_ROLE,
         WORKER_ROLE,
@@ -396,15 +465,8 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
     engine = create_engine(settings.database_url.get_secret_value())
     await assert_least_privilege(engine)
     await assert_process_role(engine, required=WORKER_ROLE, forbidden=API_ROLE)
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
-    verifier = FallbackVerifier(
-        OpenAICompatibleVerifier(
-            base_url=str(settings.featherless_base_url),
-            api_key=settings.featherless_api_key,
-            model_id=settings.checker_model,
-        ),
-        ClaudeVerifier(client=client, maker_model=settings.maker_model),
-    )
+    provider_http = httpx.AsyncClient()
+    client, verifier = maker_and_verifier(settings, provider_http)
     fixtures = (
         GithubFixtures.load(Path(settings.github_fixtures_dir))
         if settings.github_fixtures_dir is not None
@@ -426,6 +488,7 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
             model_settings_from(settings),
             fixtures,
             github=github_client_wiring(settings, github_http),
+            documents=document_sources(settings, github_http),
         ),
     )
     logger.info("agent_worker_started")
@@ -446,6 +509,7 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
     finally:
         await github_http.aclose()
+        await provider_http.aclose()
         await engine.dispose()
 
 

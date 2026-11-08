@@ -31,6 +31,7 @@ from basho.agent.runs import RunError, RunStatus
 from basho.agent.sessions import PersistenceTransaction
 from basho.agent.worker import GithubWiring, Worker, WorkerConfig
 from basho.config import Settings
+from basho.connectors.sources import DocumentSources
 from basho.db import (
     API_ROLE,
     WORKER_ROLE,
@@ -40,10 +41,11 @@ from basho.db import (
     tenant_session,
 )
 from basho.evidence import EvidenceService
-from basho.evidence.contracts import EventKind
+from basho.evidence.contracts import EventKind, EventSource
 from basho.main import create_app
 from conftest import VALID_ENV
 from db_support import drop_login_role, provision_login_role, psycopg_dsn
+from document_support import DATABASE, FOLDER, FakeDrive, FakeNotion
 from evidence_factories import make_event
 from github_support import REPO, FakeGithub, client_for
 from maker_support import FakeClient, FixedVerifier, final, tool_call
@@ -641,4 +643,76 @@ async def test_github_failure_fails_the_run_with_the_connector_code(
     assert details.stored.run.status is RunStatus.FAILED
     assert details.stored.run.error is not None
     assert details.stored.run.error.code == "github_unauthorized"
+    assert client.messages.requests == []
+
+
+# --- Drive e Notion (ADR-0010) --------------------------------------------------------------
+
+
+async def test_worker_syncs_documents_before_the_maker(
+    session_factory: Factory, worker_session_factory: Factory
+) -> None:
+    # Arrange: pasta do Drive e database do Notion mapeadas para o projeto
+    tenant_id, project_id = uuid4(), uuid4()
+    draft = await _seed(session_factory, tenant_id, project_id)
+    run_id = await _enqueue(session_factory, tenant_id, draft)
+    sources = DocumentSources(
+        drive=FakeDrive().client(),
+        drive_folders={project_id: [FOLDER]},
+        notion=FakeNotion().client(),
+        notion_refs={project_id: [DATABASE]},
+    )
+    worker = Worker(
+        factory=worker_session_factory,
+        client=FakeClient([final(draft.model_dump_json())]),
+        verifier=FixedVerifier(),
+        config=WorkerConfig(tenant_id=tenant_id, model=ModelSettings(), documents=sources),
+        clock=Clock(),
+    )
+
+    # Act
+    await worker.process_one()
+
+    # Assert
+    details = await _run(session_factory, tenant_id, run_id)
+    assert details.stored.run.status is RunStatus.COMPLETED
+    async with tenant_session(session_factory, tenant_id) as session:
+        stored = await EvidenceService(session).query(
+            tenant_id, project_id=project_id, kinds=[EventKind.DOCUMENT_OBSERVED]
+        )
+    assert {e.source for e in stored} == {EventSource.GOOGLE_DRIVE, EventSource.NOTION}
+    assert len(stored) == 4
+
+
+async def test_document_source_failure_fails_the_run_without_calling_the_llm(
+    session_factory: Factory, worker_session_factory: Factory
+) -> None:
+    # Arrange
+    tenant_id, project_id = uuid4(), uuid4()
+    draft = await _seed(session_factory, tenant_id, project_id)
+    run_id = await _enqueue(session_factory, tenant_id, draft)
+    notion = FakeNotion()
+    notion.query_failures = [httpx.Response(401)]
+    client = FakeClient([])
+    worker = Worker(
+        factory=worker_session_factory,
+        client=client,
+        verifier=FixedVerifier(),
+        config=WorkerConfig(
+            tenant_id=tenant_id,
+            model=ModelSettings(),
+            documents=DocumentSources(notion=notion.client(), notion_refs={project_id: [DATABASE]}),
+        ),
+        clock=Clock(),
+    )
+
+    # Act
+    await worker.process_one()
+
+    # Assert
+    details = await _run(session_factory, tenant_id, run_id)
+    assert details.stored.run.status is RunStatus.FAILED
+    assert details.stored.run.error is not None
+    assert details.stored.run.error.code == "notion_unauthorized"
+    assert details.stored.run.error.retryable is False
     assert client.messages.requests == []

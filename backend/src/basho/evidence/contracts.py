@@ -21,6 +21,9 @@ class EventKind(StrEnum):
     COMMIT_OBSERVED = "commit_observed"
     PULL_REQUEST_OBSERVED = "pull_request_observed"
     ISSUE_OBSERVED = "issue_observed"
+    DOCUMENT_OBSERVED = "document_observed"
+    """Revisão de um documento externo (Drive, Notion). Nova revisão = novo evento com
+    `supersedes` apontando para a anterior; o original nunca muda (ADR-0003/0012)."""
     TECHNICAL_JUSTIFICATION = "technical_justification"
     ACTIVITY_RECORD = "activity_record"
     FORMAL_HOURS_DECLARED = "formal_hours_declared"
@@ -35,6 +38,8 @@ class EventSource(StrEnum):
     """Origem do fato. Só `USER` e `FORMAL_SYSTEM` podem originar dados formais."""
 
     GITHUB = "github"
+    GOOGLE_DRIVE = "google_drive"
+    NOTION = "notion"
     USER = "user"
     FORMAL_SYSTEM = "formal_system"
     AGENT = "agent"

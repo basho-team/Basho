@@ -18,6 +18,7 @@ const KIND_LABEL: Record<string, string> = {
   commit_observed: "Commit",
   pull_request_observed: "Pull request",
   issue_observed: "Issue",
+  document_observed: "Documento",
   technical_justification: "Justificativa técnica",
   activity_record: "Registro do Maker",
   formal_hours_declared: "Horas formais declaradas",
@@ -31,9 +32,39 @@ const KIND_LABEL: Record<string, string> = {
 /** `owner/repo#42` → link do GitHub. Qualquer outro formato fica como texto (dado externo). */
 const GITHUB_REF = /^([\w.-]+\/[\w.-]+)#(\d+)$/;
 
+const SOURCE_LABEL: Record<string, string> = {
+  github: "GitHub",
+  google_drive: "Google Drive",
+  notion: "Notion",
+};
+
+/** Link do documento (Drive/Notion) só se for https em host conhecido: o payload é dado externo. */
+const DOCUMENT_HOSTS = new Set(["docs.google.com", "drive.google.com", "www.notion.so", "notion.so"]);
+
+function documentLink(event: EvidenceEvent): { href: string; title: string } | null {
+  if (event.kind !== "document_observed") return null;
+  const { url, title } = event.payload as { url?: unknown; title?: unknown };
+  if (typeof url !== "string") return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || !DOCUMENT_HOSTS.has(parsed.hostname)) return null;
+  } catch {
+    return null;
+  }
+  return { href: url, title: typeof title === "string" && title ? title : url };
+}
+
 function SourceRef({ event }: { event: EvidenceEvent }) {
   const ref = event.source_ref;
   if (!ref) return null;
+  const doc = documentLink(event);
+  if (doc) {
+    return (
+      <a className="break-all underline" href={doc.href} target="_blank" rel="noopener noreferrer">
+        {doc.title} <span className="font-mono text-muted-foreground">({ref})</span>
+      </a>
+    );
+  }
   const match = event.source === "github" ? GITHUB_REF.exec(ref) : null;
   if (!match) return <span className="font-mono break-all">{ref}</span>;
   return (
@@ -54,7 +85,7 @@ function EventLine({ event, artifactId }: { event: EvidenceEvent; artifactId: st
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{KIND_LABEL[event.kind] ?? event.kind}</span>
         <span className="text-muted-foreground">
-          {event.source} · {event.actor.type}
+          {SOURCE_LABEL[event.source] ?? event.source} · {event.actor.type}
           {event.actor.model ? ` (${event.actor.model})` : ""} · {dateFormat.format(new Date(event.created_at))}
         </span>
         {event.is_synthetic && <SyntheticBadge />}

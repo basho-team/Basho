@@ -41,6 +41,158 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/agent-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Agent Run
+         * @description Humano dispara; o worker executa. Mesma tarefa ativa ou mesma `Idempotency-Key` → o
+         *     mesmo run (200). Pesquisador só pede o próprio relatório; gerente, de qualquer um.
+         */
+        post: operations["create_agent_run_api_v1_projects__project_id__agent_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Run */
+        get: operations["get_agent_run_api_v1_agent_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reports
+         * @description Versão atual de cada relatório do projeto no período, com estado de revisão por papel.
+         */
+        get: operations["list_reports_api_v1_projects__project_id__reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/auto-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auto Draft
+         * @description Rascunho do próprio pesquisador, por regras (sem LLM); devolve o atual se já existir.
+         */
+        post: operations["auto_draft_api_v1_projects__project_id__reports_auto_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/consolidation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Consolidation */
+        get: operations["get_consolidation_api_v1_projects__project_id__consolidation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/needs-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reports Needing Review */
+        get: operations["reports_needing_review_api_v1_projects__project_id__reports_needs_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/period/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Period
+         * @description Gerente fecha o período: o sistema prepara o rascunho de quem ainda não tem relatório.
+         */
+        post: operations["close_period_api_v1_projects__project_id__period_close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/evidence/{event_id}/correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct Evidence
+         * @description Ação humana: grava a correção (supersedes) e propaga needs_review na mesma transação.
+         */
+        post: operations["correct_evidence_api_v1_projects__project_id__evidence__event_id__correction_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -126,6 +278,82 @@ export interface paths {
          * @description Ação FORMAL, só humano com papel `manager` (ADR-0005). Nunca exposta ao agente.
          */
         post: operations["decide_artifact_api_v1_artifacts__artifact_id__approval_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Integrations Config */
+        get: operations["integrations_config_api_v1_integrations_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Links */
+        get: operations["list_links_api_v1_projects__project_id__links_get"];
+        put?: never;
+        /**
+         * Add Link
+         * @description Autoriza o Basho a usar o link: só gerente; o acesso é verificado antes de gravar.
+         */
+        post: operations["add_link_api_v1_projects__project_id__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Link */
+        delete: operations["revoke_link_api_v1_projects__project_id__links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Publications */
+        get: operations["list_publications_api_v1_projects__project_id__publications_get"];
+        put?: never;
+        /**
+         * Publish Now
+         * @description Enfileira o que está verificado e ainda não publicado; o worker escreve nos destinos.
+         */
+        post: operations["publish_now_api_v1_projects__project_id__publications_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -235,6 +463,44 @@ export interface components {
             /** Evidence Ids */
             evidence_ids: string[];
         };
+        /** AgentCallOut */
+        AgentCallOut: {
+            /** Attempt */
+            attempt: number;
+            /** Model */
+            model: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Stop Reason */
+            stop_reason: string | null;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Cache Read Input Tokens */
+            cache_read_input_tokens: number;
+            /** Cache Creation Input Tokens */
+            cache_creation_input_tokens: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: string | null;
+        };
+        /** AgentRunIn */
+        AgentRunIn: {
+            /**
+             * Task Kind
+             * @default research_report
+             * @constant
+             */
+            task_kind: "research_report";
+            /**
+             * Researcher Id
+             * Format: uuid
+             */
+            researcher_id: string;
+            period: components["schemas"]["ReportingPeriod"];
+        };
         /** AgentRunMetrics */
         AgentRunMetrics: {
             /**
@@ -252,6 +518,56 @@ export interface components {
             latency_ms: number;
             /** Cost Usd */
             cost_usd: number;
+        };
+        /** AgentRunOut */
+        AgentRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Task Kind */
+            task_kind: string;
+            /** Prompt Version */
+            prompt_version: string;
+            status: components["schemas"]["RunStatus"];
+            /** Attempts */
+            attempts: number;
+            /** Max Attempts */
+            max_attempts: number;
+            error: components["schemas"]["RunError"] | null;
+            /**
+             * Run After
+             * Format: date-time
+             */
+            run_after: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Artifact Event Id */
+            artifact_event_id: string | null;
+            /** Verification Event Id */
+            verification_event_id: string | null;
+            /** Artifact Status */
+            artifact_status: string | null;
+            /** Calls */
+            calls?: components["schemas"]["AgentCallOut"][];
+            /** Total Latency Ms */
+            total_latency_ms: number;
+            /** Total Estimated Cost Usd */
+            total_estimated_cost_usd: string | null;
         };
         /**
          * ApprovalDecision
@@ -389,6 +705,38 @@ export interface components {
             /** Current Status */
             current_status?: string | null;
         };
+        /** ConsolidatedClaim */
+        ConsolidatedClaim: {
+            section: components["schemas"]["ClaimSection"];
+            /** Text */
+            text: string;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            source: components["schemas"]["SourceRef"];
+        };
+        /** ConsolidatedResult */
+        ConsolidatedResult: {
+            /** Description */
+            description: string;
+            outcome: components["schemas"]["ExperimentOutcomeKind"];
+            /** Evidence Ids */
+            evidence_ids: string[];
+            source: components["schemas"]["SourceRef"];
+        };
+        /**
+         * ConsolidationOut
+         * @description `consolidation` é calculada na leitura a partir das versões atuais (não persistida).
+         */
+        ConsolidationOut: {
+            consolidation: components["schemas"]["ManagerConsolidation"] | null;
+            /** Summary Markdown */
+            summary_markdown: string | null;
+            /**
+             * Needs Review
+             * @description Relatórios afetados por correção de evidência (#11)
+             */
+            needs_review?: components["schemas"]["ReportReviewFlag"][];
+        };
         /**
          * CorrectionIn
          * @description Correção enviada com a revisão; vira `ReportCorrection` sobre a versão do path.
@@ -398,6 +746,16 @@ export interface components {
             reason: string;
             /** Operations */
             operations: (components["schemas"]["ReviseClaim"] | components["schemas"]["AddClaim"] | components["schemas"]["WithdrawClaim"] | components["schemas"]["ReviseExperimentOutcome"] | components["schemas"]["AddExperiment"] | components["schemas"]["ResolveMissing"])[];
+        };
+        /** Dispute */
+        Dispute: {
+            /** Text */
+            text: string;
+            /** Reason */
+            reason: string;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            source: components["schemas"]["SourceRef"];
         };
         /** DossierEntryOut */
         DossierEntryOut: {
@@ -450,13 +808,20 @@ export interface components {
          * @description Tipos de fato registrados no ledger.
          * @enum {string}
          */
-        EventKind: "commit_observed" | "pull_request_observed" | "issue_observed" | "technical_justification" | "activity_record" | "formal_hours_declared" | "expense_declared" | "user_confirmation" | "user_correction" | "verification_result" | "status_changed";
+        EventKind: "commit_observed" | "pull_request_observed" | "issue_observed" | "document_observed" | "technical_justification" | "activity_record" | "formal_hours_declared" | "expense_declared" | "user_confirmation" | "user_correction" | "verification_result" | "status_changed";
         /**
          * EventSource
          * @description Origem do fato. Só `USER` e `FORMAL_SYSTEM` podem originar dados formais.
          * @enum {string}
          */
-        EventSource: "github" | "user" | "formal_system" | "agent" | "system";
+        EventSource: "github" | "google_drive" | "notion" | "user" | "formal_system" | "agent" | "system";
+        /** EvidenceCorrectionIn */
+        EvidenceCorrectionIn: {
+            /** Description */
+            description: string;
+            /** Reason */
+            reason: string;
+        };
         /**
          * EvidenceEvent
          * @description Evento persistido (somente leitura).
@@ -533,11 +898,128 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** IntegrationsConfigOut */
+        IntegrationsConfigOut: {
+            /** Drive */
+            drive: boolean;
+            /** Notion */
+            notion: boolean;
+            /** Github */
+            github: boolean;
+            /**
+             * Google Service Account Email
+             * @description Conta com quem o usuário compartilha a pasta do Drive (papel Editor)
+             */
+            google_service_account_email: string | null;
+        };
         /**
          * IssueSeverity
          * @enum {string}
          */
         IssueSeverity: "blocker" | "major" | "minor";
+        /**
+         * ItemKind
+         * @enum {string}
+         */
+        ItemKind: "claim" | "experiment" | "missing";
+        /** LinkErrorOut */
+        LinkErrorOut: {
+            /** Detail */
+            detail: string;
+            /** Code */
+            code: string;
+        };
+        /** LinkIn */
+        LinkIn: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * LinkKind
+         * @enum {string}
+         */
+        LinkKind: "github_repo" | "drive_folder" | "notion_page";
+        /** LinkOut */
+        LinkOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            kind: components["schemas"]["LinkKind"];
+            /** Url */
+            url: string;
+            /** Display Name */
+            display_name: string;
+            status: components["schemas"]["LinkStatus"];
+            /** Last Check At */
+            last_check_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * LinkStatus
+         * @enum {string}
+         */
+        LinkStatus: "active" | "revoked";
+        /** ManagerConsolidation */
+        ManagerConsolidation: {
+            /**
+             * Consolidation Id
+             * Format: uuid
+             */
+            consolidation_id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            period: components["schemas"]["ReportingPeriod"];
+            /** Input Version Ids */
+            input_version_ids: string[];
+            /** Input Review Ids */
+            input_review_ids: string[];
+            /** Reports */
+            reports: components["schemas"]["ReportStatus"][];
+            /** Advances */
+            advances: components["schemas"]["ConsolidatedClaim"][];
+            /** Results */
+            results: components["schemas"]["ConsolidatedResult"][];
+            /** Result Claims */
+            result_claims: components["schemas"]["ConsolidatedClaim"][];
+            /** Uncertainties */
+            uncertainties: components["schemas"]["ConsolidatedClaim"][];
+            /** Open Questions */
+            open_questions: components["schemas"]["OpenQuestion"][];
+            /** Disputes */
+            disputes: components["schemas"]["Dispute"][];
+            /** Outcome Counts */
+            outcome_counts: {
+                [key: string]: number;
+            };
+            /** All Text Approved */
+            all_text_approved: boolean;
+            /** Is Synthetic */
+            is_synthetic: boolean;
+            /**
+             * Note
+             * @default Consolidação operacional para acompanhamento gerencial. Não constitui análise, enquadramento ou aprovação fiscal.
+             */
+            note: string;
+        };
         /**
          * MissingInformation
          * @description Lacuna que o Maker não pode preencher sozinho → vira pendência.
@@ -555,6 +1037,26 @@ export interface components {
              * @description Ex.: pesquisador, coordenador, financeiro
              */
             ask_role: string;
+        };
+        /**
+         * OpenQuestion
+         * @description Pergunta pendente; para claims `pending`, traz também o texto e a evidência parcial.
+         */
+        OpenQuestion: {
+            /** Question */
+            question: string;
+            /** Ask Role */
+            ask_role: string;
+            /** Topic */
+            topic: string;
+            /** Text */
+            text?: string | null;
+            /**
+             * Evidence Ids
+             * @default []
+             */
+            evidence_ids: string[];
+            source: components["schemas"]["SourceRef"];
         };
         /**
          * PendingAnswerIn
@@ -650,6 +1152,16 @@ export interface components {
          */
         PendingStatus: "open" | "answered" | "resolved";
         /**
+         * PeriodClosingOut
+         * @description Resultado do fechamento autônomo do período (rascunhos por regras, sem LLM).
+         */
+        PeriodClosingOut: {
+            /** Created */
+            created: components["schemas"]["ReportVersionOut"][];
+            /** Already Drafted Or Empty */
+            already_drafted_or_empty: string[];
+        };
+        /**
          * Periodicity
          * @enum {string}
          */
@@ -679,6 +1191,76 @@ export interface components {
              * @description Pendências com status `open`
              */
             open_pending: number;
+        };
+        /** PropagationResult */
+        PropagationResult: {
+            /**
+             * Correction Event Id
+             * Format: uuid
+             */
+            correction_event_id: string;
+            /**
+             * Superseded Event Id
+             * Format: uuid
+             */
+            superseded_event_id: string;
+            /** Marked */
+            marked: components["schemas"]["ReviewMark"][];
+            /** Already Marked */
+            already_marked: string[];
+        };
+        /** PublicationOut */
+        PublicationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Link Id
+             * Format: uuid
+             */
+            link_id: string;
+            link_kind: components["schemas"]["LinkKind"] | null;
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Title */
+            title: string;
+            status: components["schemas"]["PublicationStatus"];
+            /** Attempts */
+            attempts: number;
+            /** External Url */
+            external_url: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * PublicationStatus
+         * @enum {string}
+         */
+        PublicationStatus: "queued" | "running" | "published" | "failed";
+        /** PublicationsOut */
+        PublicationsOut: {
+            /**
+             * Queued
+             * @description Publicações novas enfileiradas por esta chamada
+             */
+            queued: number;
+            /** Items */
+            items: components["schemas"]["PublicationOut"][];
         };
         /**
          * ReportClaim
@@ -735,6 +1317,39 @@ export interface components {
              * Format: date-time
              */
             reviewed_at: string;
+        };
+        /**
+         * ReportReviewFlag
+         * @description Versão atual que voltou a precisar de revisão porque uma evidência citada foi corrigida.
+         */
+        ReportReviewFlag: {
+            /**
+             * Report Version Id
+             * Format: uuid
+             */
+            report_version_id: string;
+            /**
+             * Researcher Id
+             * Format: uuid
+             */
+            researcher_id: string;
+            /**
+             * Superseded Event Id
+             * Format: uuid
+             * @description Evidência original, substituída
+             */
+            superseded_event_id: string;
+            /**
+             * Cause Event Id
+             * Format: uuid
+             * @description Evento de correção que causou a revisão
+             */
+            cause_event_id: string;
+            /**
+             * Marked At
+             * Format: date-time
+             */
+            marked_at: string;
         };
         /** ReportStatus */
         ReportStatus: {
@@ -980,6 +1595,29 @@ export interface components {
             comment?: string | null;
             correction?: components["schemas"]["CorrectionIn"] | null;
         };
+        /**
+         * ReviewMark
+         * @description Um artefato levado a ``needs_review`` por esta propagação.
+         */
+        ReviewMark: {
+            /**
+             * Artifact Event Id
+             * Format: uuid
+             */
+            artifact_event_id: string;
+            /**
+             * Status Event Id
+             * Format: uuid
+             */
+            status_event_id: string;
+            /**
+             * Via Event Id
+             * Format: uuid
+             */
+            via_event_id: string;
+            /** Depth */
+            depth: number;
+        };
         /** ReviewOut */
         ReviewOut: {
             review: components["schemas"]["ReportReview"];
@@ -1060,6 +1698,60 @@ export interface components {
             state: components["schemas"]["ReviewState"];
             /** Review Id */
             review_id: string | null;
+        };
+        /**
+         * RunError
+         * @description Erro resumido de execução. Sem segredos, PII ou corpo de resposta de provedor.
+         */
+        RunError: {
+            /**
+             * Code
+             * @description Ex.: provider_timeout
+             */
+            code: string;
+            /** Message */
+            message: string;
+            /** Retryable */
+            retryable: boolean;
+        };
+        /**
+         * RunStatus
+         * @description Estado de **execução** de um job do agente.
+         *
+         *     Nunca é estado de conformidade nem de revisão: `completed` significa só que o job terminou,
+         *     não que o artefato foi aprovado. `awaiting_input` encerra o job; a resposta humana cria um
+         *     novo `AgentRun` com o mesmo `correlation_id` e `parent_run_id` apontando para este.
+         * @enum {string}
+         */
+        RunStatus: "queued" | "running" | "awaiting_input" | "completed" | "failed";
+        /**
+         * SourceRef
+         * @description Origem de um item: (`version_id`, `item_kind`, `item_id`) resolve o item exato.
+         *
+         *     `researcher_review_id` é a revisão do pesquisador que aprovou o texto **desta** versão
+         *     (ou `None`). Tenant/projeto/período ficam no envelope `ManagerConsolidation`.
+         */
+        SourceRef: {
+            /**
+             * Researcher Id
+             * Format: uuid
+             */
+            researcher_id: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version Number */
+            version_number: number;
+            item_kind: components["schemas"]["ItemKind"];
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Researcher Review Id */
+            researcher_review_id: string | null;
         };
         /** UnsupportedClaim */
         UnsupportedClaim: {
@@ -1233,6 +1925,317 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionConflictOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_run_api_v1_projects__project_id__agent_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRunIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_run_api_v1_agent_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_api_v1_projects__project_id__reports_get: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+                timezone?: string;
+                periodicity?: components["schemas"]["Periodicity"];
+            };
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportVersionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_draft_api_v1_projects__project_id__reports_auto_draft_post: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+                timezone?: string;
+                periodicity?: components["schemas"]["Periodicity"];
+            };
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportVersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_consolidation_api_v1_projects__project_id__consolidation_get: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+                timezone?: string;
+                periodicity?: components["schemas"]["Periodicity"];
+            };
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsolidationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reports_needing_review_api_v1_projects__project_id__reports_needs_review_get: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+                timezone?: string;
+                periodicity?: components["schemas"]["Periodicity"];
+            };
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportReviewFlag"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_period_api_v1_projects__project_id__period_close_post: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+                timezone?: string;
+                periodicity?: components["schemas"]["Periodicity"];
+            };
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeriodClosingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_evidence_api_v1_projects__project_id__evidence__event_id__correction_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceCorrectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PropagationResult"];
                 };
             };
             /** @description Validation Error */
@@ -1438,6 +2441,237 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConflictOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    integrations_config_api_v1_integrations_config_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationsConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_links_api_v1_projects__project_id__links_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_link_api_v1_projects__project_id__links_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkErrorOut"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkErrorOut"];
+                };
+            };
+        };
+    };
+    revoke_link_api_v1_projects__project_id__links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_publications_api_v1_projects__project_id__publications_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_now_api_v1_projects__project_id__publications_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationsOut"];
                 };
             };
             /** @description Validation Error */
