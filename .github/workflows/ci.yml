@@ -17,6 +17,23 @@ jobs:
   backend:
     name: Backend (ruff, mypy, pytest)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: basho_ci
+          POSTGRES_PASSWORD: basho_ci_throwaway
+          POSTGRES_DB: basho_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U basho_ci -d basho_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Credenciais descartáveis do service acima; os testes recriam o banco basho_test.
+      TEST_DATABASE_URL: postgresql+psycopg://basho_ci:basho_ci_throwaway@localhost:5432/basho_ci
     defaults:
       run:
         working-directory: backend
