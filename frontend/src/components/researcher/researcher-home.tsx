@@ -18,7 +18,7 @@ export function ResearcherHome() {
   const mine = reports.data?.filter(report => report.author_id === user.personId) ?? [];
   return (
     <div className="space-y-8">
-      <PageHeader title="Meus relatórios" subtitle={context.data.project.name + " ? " + context.data.period.label} />
+      <PageHeader title="Meus relatórios" subtitle={context.data.project.name + " · " + context.data.period.label} />
       <Section title="Relatórios do período">
         {reports.isPending && <LoadingState />}
         {reports.isError && <ErrorState error={reports.error} onRetry={() => reports.refetch()} />}
@@ -26,7 +26,7 @@ export function ResearcherHome() {
         <div className="grid gap-3 sm:grid-cols-2">
           {mine.map(report => <Card key={report.report_id}>
             <CardHeader><CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              Relatório mensal ? v{report.latest_version} <ReviewStateBadge state={report.review_state} />
+              Relatório mensal · v{report.latest_version} <ReviewStateBadge state={report.review_state} />
             </CardTitle></CardHeader>
             <CardContent><Link href={"/pesquisador/relatorios/" + report.report_id} className="font-medium text-primary underline underline-offset-4">Ler e revisar relatório</Link></CardContent>
           </Card>)}

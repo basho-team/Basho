@@ -10,6 +10,7 @@ import {
   IntegrationsConfigSchema,
   LinkSchema,
   LinksSchema,
+  SourcesSchema,
   PublicationsSchema,
 } from "@/lib/bff/integrations-contract";
 import { ApiErrorSchema } from "@/lib/contracts/provisional";
@@ -50,6 +51,7 @@ export function createIntegrationsApi(doFetch: typeof fetch = (input, init) => f
   return {
     config: () => request(integrationPaths.config(), json("GET"), IntegrationsConfigSchema),
     links: (projectId: string) => request(integrationPaths.links(projectId), json("GET"), LinksSchema),
+    sources: (projectId: string) => request(integrationPaths.sources(projectId), json("GET"), SourcesSchema),
     addLink: (projectId: string, url: string) =>
       request(integrationPaths.links(projectId), json("POST", { url }), LinkSchema),
     revokeLink: (projectId: string, linkId: string) =>

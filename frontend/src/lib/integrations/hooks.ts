@@ -9,7 +9,18 @@ export const integrationKeys = {
   config: ["basho", "integrations", "config"] as const,
   links: (projectId: string) => ["basho", "integrations", "links", projectId] as const,
   publications: (projectId: string) => ["basho", "integrations", "publications", projectId] as const,
+  sources: (projectId: string) => ["basho", "integrations", "sources", projectId] as const,
 };
+
+/** Fontes da organização no ledger do projeto; atualiza a cada 30 s (o worker sincroniza por run). */
+export function useOrgSources(projectId: string | undefined) {
+  return useQuery({
+    queryKey: integrationKeys.sources(projectId ?? ""),
+    queryFn: () => integrationsApi.sources(projectId ?? ""),
+    enabled: Boolean(projectId),
+    refetchInterval: 30_000,
+  });
+}
 
 export function useIntegrationsConfig() {
   return useQuery({ queryKey: integrationKeys.config, queryFn: () => integrationsApi.config(), staleTime: 60_000 });
