@@ -53,8 +53,8 @@ async def test_append_persists_event_with_hash_recomputable_from_stored_row(
         "DELETE FROM evidence_events WHERE tenant_id = :t",
     ],
 )
-async def test_update_and_delete_are_rejected_by_trigger(
-    session_factory: Factory, statement: str
+async def test_update_and_delete_are_rejected_by_trigger_even_for_owner(
+    session_factory: Factory, owner_session_factory: Factory, statement: str
 ) -> None:
     # Arrange
     tenant_id, project_id = fresh_ids()
@@ -63,16 +63,19 @@ async def test_update_and_delete_are_rejected_by_trigger(
             make_event(tenant_id=tenant_id, project_id=project_id)
         )
 
-    # Act / Assert
+    # Act / Assert (o role da app nem chega ao trigger: ver test_rls_roles_db)
     with pytest.raises(DBAPIError, match=APPEND_ONLY):
-        async with tenant_session(session_factory, tenant_id) as session:
+        async with tenant_session(owner_session_factory, tenant_id) as session:
             await session.execute(text(statement), {"t": tenant_id})
 
 
-async def test_truncate_is_rejected_by_trigger(session_factory: Factory) -> None:
-    async with session_factory() as session, session.begin():
+async def test_truncate_is_rejected_by_trigger_even_for_owner(
+    owner_session_factory: Factory,
+) -> None:
+    async with owner_session_factory() as session, session.begin():
         with pytest.raises(DBAPIError, match=APPEND_ONLY):
-            await session.execute(text("TRUNCATE evidence_events"))
+            # CASCADE: sem ele a FK de report_versions (#39) barra antes do trigger
+            await session.execute(text("TRUNCATE evidence_events CASCADE"))
 
 
 async def test_correction_appends_new_event_and_leaves_original_untouched(
@@ -368,3 +371,29 @@ async def test_integrity_error_on_insert_becomes_generic_validation_error(
                 make_event(tenant_id=tenant_id, project_id=project_id)
             )
     assert "secret-detail" not in str(raised.value)
+
+
+async def test_missing_ids_returns_only_ids_absent_from_tenant_and_project(
+    session_factory: Factory,
+) -> None:
+    # Arrange
+    tenant_id, project_id = fresh_ids()
+    other_tenant, other_project = fresh_ids()
+    async with tenant_session(session_factory, tenant_id) as session:
+        service = EvidenceService(session)
+        mine = await service.append(make_event(tenant_id=tenant_id, project_id=project_id))
+        elsewhere = await service.append(make_event(tenant_id=tenant_id, project_id=other_project))
+    async with tenant_session(session_factory, other_tenant) as session:
+        foreign = await EvidenceService(session).append(
+            make_event(tenant_id=other_tenant, project_id=project_id)
+        )
+    unknown = uuid4()
+
+    # Act
+    async with tenant_session(session_factory, tenant_id) as session:
+        missing = await EvidenceService(session).missing_ids(
+            tenant_id, project_id, [mine.id, elsewhere.id, foreign.id, unknown, unknown]
+        )
+
+    # Assert
+    assert missing == {elsewhere.id, foreign.id, unknown}

@@ -32,6 +32,17 @@ class EvidenceRepository:
         )
         return (await self._session.execute(statement)).scalar_one_or_none()
 
+    async def existing_ids(
+        self, tenant_id: UUID, project_id: UUID, event_ids: list[UUID]
+    ) -> set[UUID]:
+        """IDs de ``event_ids`` que existem no ledger do tenant E do projeto (1 query)."""
+        statement = select(EvidenceEventRow.id).where(
+            EvidenceEventRow.tenant_id == tenant_id,
+            EvidenceEventRow.project_id == project_id,
+            EvidenceEventRow.id.in_(event_ids),
+        )
+        return set((await self._session.execute(statement)).scalars())
+
     async def project_of(self, tenant_id: UUID, event_id: UUID) -> UUID | None:
         statement = select(EvidenceEventRow.project_id).where(
             EvidenceEventRow.tenant_id == tenant_id, EvidenceEventRow.id == event_id

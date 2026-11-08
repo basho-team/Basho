@@ -46,8 +46,11 @@ Monorepo:
    docker compose ps             # STATUS deve mostrar "healthy"
    ```
 
-   Use em `DATABASE_URL` o usuário, senha, banco e porta definidos no `.env`
-   (ex.: `postgresql+psycopg://basho:<senha>@localhost:5432/basho`).
+   São dois roles (ADR-0006): `MIGRATION_DATABASE_URL` usa o usuário do compose, dono do
+   schema (ex.: `postgresql+psycopg://basho:<senha>@localhost:5432/basho`); `DATABASE_URL`
+   usa um login da aplicação, membro de `basho_api`, sem UPDATE/DELETE no ledger e sujeito
+   à RLS. Aplique as migrações e crie esse login uma vez (passo a passo em
+   [`backend/README.md`](backend/README.md#roles-do-banco-e-rls)).
 
 3. **Backend**
 

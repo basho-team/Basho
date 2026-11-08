@@ -92,3 +92,20 @@ def test_app_does_not_start_when_maker_and_checker_are_the_same_model(
     # Act / Assert
     with pytest.raises(ConfigError):
         load_settings()
+
+
+def test_short_reviewer_identity_secret_is_rejected(
+    valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REVIEWER_IDENTITY_SECRET", "curto")
+
+    with pytest.raises(ConfigError, match="REVIEWER_IDENTITY_SECRET"):
+        load_settings()
+
+
+def test_empty_reviewer_identity_secret_means_not_configured(
+    valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REVIEWER_IDENTITY_SECRET", "")
+
+    assert load_settings().reviewer_identity_secret is None
