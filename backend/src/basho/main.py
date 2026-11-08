@@ -6,10 +6,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict
 
+from basho.compliance.api import router as compliance_router
 from basho.config import Settings, get_settings
 from basho.db import assert_least_privilege, create_engine, create_session_factory
+from basho.demo.api import router as demo_router
+from basho.evidence.api import router as evidence_router
 from basho.logging import configure_logging, get_logger
 from basho.reports.api import router as reports_router
+from basho.reports.journey_api import router as journey_router
 
 APP_TITLE = "Basho API"
 APP_VERSION = "0.1.0"
@@ -42,7 +46,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
+    # journey antes de reports: `/reports` (POST) e `/reports/{id}/history` não colidem com
+    # `/reports/{id}`, mas a ordem explícita evita surpresa com rotas futuras.
+    app.include_router(journey_router, prefix=API_PREFIX)
     app.include_router(reports_router, prefix=API_PREFIX)
+    app.include_router(evidence_router, prefix=API_PREFIX)
+    app.include_router(compliance_router, prefix=API_PREFIX)
+    app.include_router(demo_router, prefix=API_PREFIX)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health() -> HealthResponse:

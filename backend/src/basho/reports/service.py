@@ -18,7 +18,9 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from basho.agent.artifacts import ResearchReportDraft
+from basho.agent.artifacts import ReportingPeriod, ResearchReportDraft
+from basho.agent.checks import ReportDeterministicChecker
+from basho.agent.verifier import VerificationResult
 from basho.evidence import EvidenceNotFoundError, EvidenceService
 from basho.evidence.contracts import Actor, ActorType, EventKind, EventSource, NewEvidenceEvent
 from basho.reports.consolidation import ReportInput, consolidate
@@ -390,3 +392,73 @@ class ReportService:
         except IntegrityError:
             raise ReportValidationError("revisão viola uma restrição de integridade") from None
         return event.id
+
+
+# --- leitura para a jornada (lista, histórico, consolidação, checks) ----------------------
+
+
+class ReportQueryService:
+    """Leituras da jornada pesquisador → gerente → fiscal. Não grava nada."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._repository = ReportRepository(session)
+        self._ledger = EvidenceService(session)
+        self._reports = ReportService(session)
+
+    async def project_inputs(
+        self, tenant_id: UUID, project_id: UUID, period: ReportingPeriod
+    ) -> list[ReportInput]:
+        """Histórico e revisões de cada série do projeto no período (vazio se não houver)."""
+        await self._reports._require_session_tenant(tenant_id)
+        period_id = await self._repository.find_period(tenant_id, period)
+        if period_id is None:
+            return []
+        rows = await self._repository.project_versions(tenant_id, project_id, period_id)
+        reviews = await self._repository.reviews_of(tenant_id, [row.id for row in rows])
+        by_researcher: dict[UUID, list[ReportVersionRow]] = {}
+        for row in rows:
+            by_researcher.setdefault(row.researcher_id, []).append(row)
+        inputs = []
+        for series in by_researcher.values():
+            ids = {row.id for row in series}
+            inputs.append(
+                ReportInput(
+                    versions=tuple(_to_version(row) for row in series),
+                    reviews=tuple(_to_review(r) for r in reviews if r.report_version_id in ids),
+                )
+            )
+        return inputs
+
+    async def list_current(
+        self, tenant_id: UUID, project_id: UUID, period: ReportingPeriod
+    ) -> list[ReportVersionOut]:
+        await self._reports._require_session_tenant(tenant_id)
+        period_id = await self._repository.find_period(tenant_id, period)
+        if period_id is None:
+            return []
+        rows = await self._repository.project_versions(tenant_id, project_id, period_id)
+        by_researcher: dict[UUID, list[ReportVersionRow]] = {}
+        for row in rows:
+            by_researcher.setdefault(row.researcher_id, []).append(row)
+        return [
+            await self._reports._to_out(series[-1], series) for series in by_researcher.values()
+        ]
+
+    async def history(self, tenant_id: UUID, version_id: UUID) -> list[ReportVersionOut]:
+        await self._reports._require_session_tenant(tenant_id)
+        row = await self._reports._require_row(tenant_id, version_id)
+        series = await self._reports._series_of(row)
+        return [await self._reports._to_out(item, series) for item in series]
+
+    async def run_checks(self, tenant_id: UUID, version_id: UUID) -> VerificationResult:
+        """Checks determinísticos (#9) sobre a versão, com as evidências citadas do ledger."""
+        await self._reports._require_session_tenant(tenant_id)
+        row = await self._reports._require_row(tenant_id, version_id)
+        version = _to_version(row)
+        evidence = []
+        for event_id in cited_evidence_ids(version):
+            try:
+                evidence.append(await self._ledger.get(tenant_id, event_id))
+            except EvidenceNotFoundError:
+                continue  # o check acusa unknown_evidence
+        return ReportDeterministicChecker(tenant_id).check(version.draft, evidence)

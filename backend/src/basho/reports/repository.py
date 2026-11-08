@@ -46,6 +46,32 @@ class ReportRepository:
         )
         return (await self._session.execute(statement)).scalar_one()
 
+    async def find_period(self, tenant_id: UUID, period: ReportingPeriod) -> UUID | None:
+        """Localiza o período sem criá-lo (leituras não gravam nada)."""
+        statement = select(ReportingPeriodRow.id).where(
+            ReportingPeriodRow.tenant_id == tenant_id,
+            ReportingPeriodRow.start_date == period.start,
+            ReportingPeriodRow.end_date == period.end,
+            ReportingPeriodRow.timezone == period.timezone,
+            ReportingPeriodRow.periodicity == period.periodicity.value,
+        )
+        return (await self._session.execute(statement)).scalar_one_or_none()
+
+    async def project_versions(
+        self, tenant_id: UUID, project_id: UUID, period_id: UUID
+    ) -> list[ReportVersionRow]:
+        """Todas as versões de todas as séries do projeto no período (pesquisador, número)."""
+        statement = (
+            select(ReportVersionRow)
+            .where(
+                ReportVersionRow.tenant_id == tenant_id,
+                ReportVersionRow.project_id == project_id,
+                ReportVersionRow.reporting_period_id == period_id,
+            )
+            .order_by(ReportVersionRow.researcher_id, ReportVersionRow.number)
+        )
+        return list((await self._session.execute(statement)).scalars())
+
     async def get_version(self, tenant_id: UUID, version_id: UUID) -> ReportVersionRow | None:
         statement = select(ReportVersionRow).where(
             ReportVersionRow.tenant_id == tenant_id, ReportVersionRow.id == version_id
