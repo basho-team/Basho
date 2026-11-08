@@ -15,6 +15,7 @@ from pydantic import SecretStr
 from basho.agent.checker import (
     INCONSISTENT_VERDICT,
     INVALID_RESPONSE,
+    REDACTED_KINDS,
     REFUSED,
     TRUNCATED,
     ClaudeVerifier,
@@ -353,20 +354,34 @@ def test_payload_cannot_close_evidence_envelope() -> None:
     assert "\u003c/evidence\u003e" in message
 
 
-def test_formal_hours_payload_is_not_sent_to_provider() -> None:
+@pytest.mark.parametrize(
+    ("kind", "payload", "secret"),
+    [
+        (EventKind.FORMAL_HOURS_DECLARED, {"researcher_id": "pessoa-77", "hours": 31}, "pessoa-77"),
+        (
+            EventKind.EXPENSE_DECLARED,
+            {"amount": "98765.43", "supplier": "Fornecedor X"},
+            "98765.43",
+        ),
+    ],
+    ids=["formal_hours", "expense"],
+)
+def test_formal_data_payload_is_not_sent_to_provider(
+    kind: EventKind, payload: dict[str, Any], secret: str
+) -> None:
     # Arrange
-    method, result, hours = commit(), commit("bench"), formal_hours()
-    draft = report(
-        method_ids=(method.id,), result_ids=(result.id,), formal_hours_event_ids=(hours.id,)
-    )
+    method, result = commit(), commit("bench")
+    formal = formal_hours(kind=kind, payload=payload)
+    draft = report(method_ids=(method.id,), result_ids=(result.id, formal.id))
 
     # Act
-    message = build_checker_input(draft, [method, result, hours])
+    message = build_checker_input(draft, [method, result, formal])
 
     # Assert
+    assert kind in REDACTED_KINDS
+    assert secret not in message
     assert "coordenador-1" not in message
-    assert "researcher_id" not in message.split("</artifact>")[1]
-    assert "formal_hours_declared" in message
+    assert kind.value in message
 
 
 def test_missing_cited_evidence_is_explicit() -> None:
