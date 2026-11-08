@@ -62,9 +62,11 @@ def _gaps(item: Expense) -> tuple[str, ...]:
 
 def _signature(item: Expense) -> tuple[object, ...]:
     # Diferença de fontes é esperada em nota/pagamento/lançamento; divergência material não é.
+    # Ordenação pela tupla completa: a ordem de entrada das alocações não pode gerar conflito.
     allocations = tuple(
         sorted(
-            ((a.activity_id, a.amount, a.basis) for a in item.allocations), key=lambda a: str(a[0])
+            ((a.activity_id, a.amount, a.basis) for a in item.allocations),
+            key=lambda a: (str(a[0]), a[1], a[2]),
         )
     )
     return (
