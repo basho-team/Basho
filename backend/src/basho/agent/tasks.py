@@ -112,9 +112,15 @@ TASK_PROFILES: Mapping[TaskKind, TaskProfile] = MappingProxyType(
 
 
 def get_profile(kind: TaskKind) -> TaskProfile:
-    """Devolve o perfil executável de `kind` ou falha se ainda não houver um."""
+    """Devolve o perfil executável de `kind` ou falha se ainda não houver um.
+
+    A allowlist é revalidada a cada consulta (defesa em profundidade). Ainda assim, a policy
+    (#6) deve checar o nível de cada tool a cada chamada, sem confiar só no perfil (ADR-0005).
+    """
     try:
-        return TASK_PROFILES[kind]
+        profile = TASK_PROFILES[kind]
     except KeyError as exc:
         msg = f"tarefa {kind.value!r} declarada, mas sem perfil executável nesta entrega"
         raise ProfileNotAvailableError(msg) from exc
+    validate_allowlist(profile.allowed_tools, MVP_TOOLS)
+    return profile

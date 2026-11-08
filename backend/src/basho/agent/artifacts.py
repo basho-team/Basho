@@ -96,7 +96,7 @@ class ReportingPeriod(BaseModel):
     da Lei do Bem: um relatório mensal não implica nenhum enquadramento nem apuração.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
     start: date
     end: date
@@ -108,7 +108,9 @@ class ReportingPeriod(BaseModel):
     def _timezone_is_iana(cls, value: str) -> str:
         try:
             ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError) as exc:
+        # OSError: nomes que são diretórios da base IANA ("America", "Etc") levantam
+        # PermissionError/IsADirectoryError conforme o SO; devem virar erro de validação.
+        except (ZoneInfoNotFoundError, ValueError, OSError) as exc:
             msg = f"timezone IANA desconhecido: {value!r}"
             raise ValueError(msg) from exc
         return value
@@ -124,15 +126,15 @@ class ReportingPeriod(BaseModel):
 class ReportClaim(BaseModel):
     """Afirmação de relatório com status explícito (distinta de `Claim`, que é sempre citada).
 
-    Regras de schema:
-    - `supported` ⇒ ≥ 1 `evidence_id` e sem `dispute_reason`;
-    - `pending` ⇒ `question` objetiva e `ask_role` (vira pendência para o responsável);
-    - `disputed` ⇒ `dispute_reason` descrevendo o conflito e ≥ 1 evidência em conflito.
+    Regras de schema (campos de outro status são proibidos):
+    - `supported` ⇒ ≥ 1 `evidence_id`; sem `question`, `ask_role` nem `dispute_reason`;
+    - `pending` ⇒ `question` objetiva e `ask_role` (vira pendência); sem `dispute_reason`;
+    - `disputed` ⇒ `dispute_reason` e ≥ 1 evidência em conflito; sem `question`/`ask_role`.
 
     `supported` não garante que a evidência sustente o texto: isso é papel do Checker.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
     section: ClaimSection
     text: str = Field(min_length=10)
@@ -142,22 +144,38 @@ class ReportClaim(BaseModel):
     ask_role: str | None = Field(default=None, min_length=1)
     dispute_reason: str | None = Field(default=None, min_length=MIN_QUESTION_LENGTH)
 
+    @field_validator("evidence_ids")
+    @classmethod
+    def _evidence_ids_unique(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        if len(set(value)) != len(value):
+            msg = "evidence_ids não pode ter IDs repetidos"
+            raise ValueError(msg)
+        return value
+
     @model_validator(mode="after")
     def _status_preconditions(self) -> Self:
+        has_question = self.question is not None or self.ask_role is not None
         if self.status is ClaimStatus.SUPPORTED:
             if len(self.evidence_ids) < MIN_CITATIONS_PER_CLAIM:
                 msg = "claim supported exige ao menos uma evidência citada"
                 raise ValueError(msg)
-            if self.dispute_reason is not None:
-                msg = "claim supported não pode ter dispute_reason; use status disputed"
+            if self.dispute_reason is not None or has_question:
+                msg = "claim supported não pode ter dispute_reason, question nem ask_role"
                 raise ValueError(msg)
         elif self.status is ClaimStatus.PENDING:
             if self.question is None or self.ask_role is None:
                 msg = "claim pending exige question objetiva e ask_role"
                 raise ValueError(msg)
-        elif self.dispute_reason is None or not self.evidence_ids:
-            msg = "claim disputed exige dispute_reason e as evidências em conflito"
-            raise ValueError(msg)
+            if self.dispute_reason is not None:
+                msg = "claim pending não pode ter dispute_reason; use status disputed"
+                raise ValueError(msg)
+        else:
+            if self.dispute_reason is None or not self.evidence_ids:
+                msg = "claim disputed exige dispute_reason e as evidências em conflito"
+                raise ValueError(msg)
+            if has_question:
+                msg = "claim disputed não pode ter question nem ask_role; use missing[]"
+                raise ValueError(msg)
         return self
 
 
@@ -181,10 +199,14 @@ class ResearchReportDraft(BaseModel):
     """Saída estruturada do perfil `research_report`: relatório individual por período.
 
     Sem campos numéricos de horas ou valores: horas só por referência a eventos formais.
-    Resultado negativo nunca é omitido: todo claim `supported` da seção `result` precisa ter
-    suas evidências cobertas por algum `ExperimentOutcome`, que declara o desfecho explícito
-    (`positive | negative | inconclusive`). O check determinístico (#9) compara os desfechos
-    com as evidências do ledger.
+
+    Pré-condição de schema para resultados: toda evidência citada por um claim `supported`
+    da seção `result` precisa estar coberta por algum `ExperimentOutcome`, que declara o
+    desfecho explícito (`positive | negative | inconclusive`). Isso **não** garante sozinho que
+    nenhum resultado negativo foi omitido: a garantia vem do check determinístico (#9), que
+    compara `experiments[]` com os experimentos do período no ledger.
+
+    `eligibility_note` é fixa (CLAUDE.md, regra 7): o Maker não redige enquadramento.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -204,6 +226,14 @@ class ResearchReportDraft(BaseModel):
         description="Nunca afirmar enquadramento definitivo (ADR-0005)",
     )
 
+    @field_validator("eligibility_note")
+    @classmethod
+    def _eligibility_note_is_fixed(cls, value: str) -> str:
+        if value != DEFAULT_ELIGIBILITY_NOTE:
+            msg = f"eligibility_note deve ser exatamente {DEFAULT_ELIGIBILITY_NOTE!r}"
+            raise ValueError(msg)
+        return value
+
     @model_validator(mode="after")
     def _results_have_explicit_outcomes(self) -> Self:
         covered = {eid for experiment in self.experiments for eid in experiment.evidence_ids}
@@ -212,9 +242,9 @@ class ResearchReportDraft(BaseModel):
                 continue
             if claim.status is not ClaimStatus.SUPPORTED:
                 continue
-            if not covered.intersection(claim.evidence_ids):
+            if not covered.issuperset(claim.evidence_ids):
                 msg = (
-                    "claim supported de resultado sem ExperimentOutcome correspondente: "
+                    "claim supported de resultado com evidência sem ExperimentOutcome: "
                     "declare o desfecho (positive, negative ou inconclusive)"
                 )
                 raise ValueError(msg)

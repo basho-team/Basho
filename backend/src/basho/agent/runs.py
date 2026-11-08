@@ -7,6 +7,7 @@ afirmação, artefato).
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Self
@@ -102,6 +103,48 @@ class AgentRun(BaseModel):
             problems.append("run failed exige error")
         if self.status is RunStatus.COMPLETED and self.error is not None:
             problems.append("run completed não pode ter error")
+        if self.status is RunStatus.AWAITING_INPUT and self.error is not None:
+            problems.append("run awaiting_input não pode ter error")
+        if self.status is RunStatus.QUEUED and self.error is not None:
+            if not self.error.retryable:
+                problems.append("run queued após erro exige error.retryable")
+            if self.attempts >= self.max_attempts:
+                problems.append("run queued após erro exige tentativas restantes")
         if problems:
             raise ValueError("; ".join(problems))
         return self
+
+
+class InvalidRunTransitionError(ValueError):
+    """Transição de estado não permitida por `ALLOWED_TRANSITIONS`."""
+
+
+def transition_run(
+    run: AgentRun, target: RunStatus, *, at: datetime, error: RunError | None = None
+) -> AgentRun:
+    """Devolve uma cópia de `run` em `target`, **revalidada**.
+
+    Use sempre esta função para mudar estado: `model_copy(update=...)` do Pydantic não roda
+    validadores e permitiria estados inválidos. Iniciar execução (`running`) conta uma tentativa;
+    `failed` exige `error`; os demais estados limpam `error`, exceto o retry (`queued`), que o
+    mantém e só é aceito com erro retryable e tentativas restantes.
+    """
+    if not can_transition(run.status, target):
+        msg = f"transição não permitida: {run.status.value} → {target.value}"
+        raise InvalidRunTransitionError(msg)
+    attempts = run.attempts + 1 if target is RunStatus.RUNNING else run.attempts
+    keeps_error = target in {RunStatus.QUEUED, RunStatus.FAILED}
+    update = {
+        "status": target,
+        "attempts": attempts,
+        "updated_at": at,
+        "error": error if keeps_error else None,
+    }
+    return AgentRun.model_validate(run.model_dump() | update)
+
+
+def fail_or_retry(run: AgentRun, error: RunError, *, at: datetime) -> AgentRun:
+    """Decide por código, após erro em `running`: volta à fila ou falha de vez."""
+    can_retry = error.retryable and run.attempts < run.max_attempts
+    target = RunStatus.QUEUED if can_retry else RunStatus.FAILED
+    return transition_run(run, target, at=at, error=error)

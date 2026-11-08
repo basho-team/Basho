@@ -22,9 +22,12 @@ from basho.agent.artifacts import (
 from basho.agent.runs import (
     ALLOWED_TRANSITIONS,
     AgentRun,
+    InvalidRunTransitionError,
     RunError,
     RunStatus,
     can_transition,
+    fail_or_retry,
+    transition_run,
 )
 from basho.agent.tasks import (
     RESEARCH_REPORT_PROFILE,
@@ -146,6 +149,70 @@ def test_supported_result_without_experiment_outcome_is_rejected() -> None:
         ResearchReportDraft.model_validate(raw)
 
 
+def test_supported_result_with_partially_covered_evidence_is_rejected() -> None:
+    # Arrange: o claim de resultado cita uma evidência que nenhum desfecho cobre.
+    raw = load_report_fixture()
+    result_claim = next(c for c in raw["claims"] if c["section"] == "result")
+    result_claim["evidence_ids"] = [*result_claim["evidence_ids"], str(uuid4())]
+
+    # Act / Assert
+    with pytest.raises(ValidationError, match="ExperimentOutcome"):
+        ResearchReportDraft.model_validate(raw)
+
+
+def test_eligibility_assertion_is_rejected() -> None:
+    # Arrange
+    raw = load_report_fixture() | {
+        "eligibility_note": "O projeto é elegível e garante o incentivo."
+    }
+
+    # Act / Assert
+    with pytest.raises(ValidationError, match="eligibility_note"):
+        ResearchReportDraft.model_validate(raw)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"question": "Pergunta que não cabe aqui?", "ask_role": "pesquisador"},
+        {"dispute_reason": "Conflito que não cabe aqui."},
+    ],
+)
+def test_supported_claim_with_fields_of_other_status_is_rejected(extra: dict[str, str]) -> None:
+    with pytest.raises(ValidationError, match="supported não pode"):
+        ReportClaim(
+            section=ClaimSection.METHOD,
+            text="Comparamos três variações de quantização.",
+            status=ClaimStatus.SUPPORTED,
+            evidence_ids=(uuid4(),),
+            **extra,
+        )
+
+
+def test_claim_with_repeated_evidence_is_rejected() -> None:
+    # Arrange
+    evidence = uuid4()
+
+    # Act / Assert
+    with pytest.raises(ValidationError, match="repetidos"):
+        ReportClaim(
+            section=ClaimSection.METHOD,
+            text="Comparamos três variações de quantização.",
+            status=ClaimStatus.SUPPORTED,
+            evidence_ids=(evidence, evidence),
+        )
+
+
+def test_whitespace_only_claim_text_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ReportClaim(
+            section=ClaimSection.METHOD,
+            text=" " * 20,
+            status=ClaimStatus.SUPPORTED,
+            evidence_ids=(uuid4(),),
+        )
+
+
 def test_pending_result_does_not_require_experiment_outcome() -> None:
     # Arrange
     raw = load_report_fixture()
@@ -182,7 +249,9 @@ def test_reporting_period_end_before_start_is_rejected() -> None:
         )
 
 
-@pytest.mark.parametrize("timezone", ["America/Atlantida", "GMT-3 Brasília", "../etc/passwd"])
+@pytest.mark.parametrize(
+    "timezone", ["America/Atlantida", "GMT-3 Brasília", "../etc/passwd", "America", "Etc"]
+)
 def test_reporting_period_unknown_timezone_is_rejected(timezone: str) -> None:
     with pytest.raises(ValidationError, match="timezone"):
         ReportingPeriod.model_validate(
@@ -250,6 +319,8 @@ def test_research_report_prompt_v1_loads_with_core_rules() -> None:
     assert "potencialmente qualificável, sujeito a análise" in prompt
     for tool in RESEARCH_REPORT_PROFILE.allowed_tools:
         assert f"`{tool}`" in prompt
+    for tool in set(MVP_TOOLS) - RESEARCH_REPORT_PROFILE.allowed_tools:
+        assert tool not in prompt
 
 
 # --- RunStatus / AgentRun ---
@@ -297,6 +368,70 @@ def test_run_updated_before_created_is_rejected() -> None:
     # Act / Assert
     with pytest.raises(ValidationError, match="updated_at"):
         AgentRun(**run_kwargs(created_at=created, updated_at=created - timedelta(seconds=1)))
+
+
+AT = datetime(2026, 11, 7, 12, 5, tzinfo=UTC)
+RETRYABLE = RunError(code="provider_timeout", message="Maker sem resposta.", retryable=True)
+FATAL = RunError(code="invalid_output", message="Saída fora do schema.", retryable=False)
+
+
+def test_transition_run_counts_attempt_when_running() -> None:
+    # Arrange
+    run = AgentRun(**run_kwargs())
+
+    # Act
+    running = transition_run(run, RunStatus.RUNNING, at=AT)
+
+    # Assert
+    assert running.status is RunStatus.RUNNING
+    assert running.attempts == 1
+    assert running.updated_at == AT
+
+
+def test_transition_run_rejects_disallowed_transition() -> None:
+    # Arrange
+    run = AgentRun(**run_kwargs())
+
+    # Act / Assert
+    with pytest.raises(InvalidRunTransitionError):
+        transition_run(run, RunStatus.COMPLETED, at=AT)
+
+
+def test_fail_or_retry_requeues_retryable_error_with_attempts_left() -> None:
+    # Arrange
+    run = AgentRun(**run_kwargs(status=RunStatus.RUNNING, attempts=1))
+
+    # Act
+    result = fail_or_retry(run, RETRYABLE, at=AT)
+
+    # Assert
+    assert result.status is RunStatus.QUEUED
+    assert result.error == RETRYABLE
+
+
+@pytest.mark.parametrize(("attempts", "error"), [(3, RETRYABLE), (1, FATAL)])
+def test_fail_or_retry_fails_when_exhausted_or_not_retryable(
+    attempts: int, error: RunError
+) -> None:
+    # Arrange
+    run = AgentRun(**run_kwargs(status=RunStatus.RUNNING, attempts=attempts))
+
+    # Act
+    result = fail_or_retry(run, error, at=AT)
+
+    # Assert
+    assert result.status is RunStatus.FAILED
+    assert result.error == error
+
+
+def test_queued_run_with_non_retryable_error_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="retryable"):
+        AgentRun(**run_kwargs(attempts=1, error=FATAL))
+
+
+def test_awaiting_input_run_with_error_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="awaiting_input"):
+        AgentRun(**run_kwargs(status=RunStatus.AWAITING_INPUT, attempts=1, error=RETRYABLE))
 
 
 def test_failed_run_with_error_is_accepted() -> None:
