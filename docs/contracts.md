@@ -34,9 +34,24 @@ Tools do MVP: `github_list_commits`, `github_get_pull_request`, `ledger_query_ev
 `ActivityRecordDraft`: `claims[]` por seção (desafio, hipótese, método, resultado, incerteza), cada um com ≥ 1 `evidence_id`; horas/participantes só como **referência** a eventos formais; lacunas em `missing[]` viram pendências com pergunta objetiva; `eligibility_note` nunca afirma enquadramento.
 
 ## 4. Checker (ADR-0004)
-1. `DeterministicChecker.check(artifact, evidence)` — schema, citações existem no mesmo tenant, horas/participantes só de eventos formais, sem afirmação de elegibilidade.
-2. `Verifier.verify(artifact, evidence)` — LLM independente. Padrão: **Featherless** (API compatível com OpenAI; `FEATHERLESS_BASE_URL`, `FEATHERLESS_API_KEY`, `CHECKER_MODEL` — ver #9). Fallback: outro modelo Claude com contexto limpo.
-3. Ambos retornam `VerificationResult(verdict, issues[], unsupported_claims[], checker)`. Códigos de issue sugeridos: `uncited_claim`, `missing_evidence`, `inferred_hours`, `inferred_participant`, `eligibility_assertion`, `prompt_injection`, `contradiction`.
+Implementado em `basho.agent.checks` e `basho.agent.checker` (#9). Vale para `ActivityRecordDraft` e `ResearchReportDraft` (`VerifiableArtifact`).
+
+1. `ReportDeterministicChecker(tenant_id).check(artifact, evidence)`: roda antes de qualquer LLM, sem banco. Qualquer issue `blocker` ou `major` vira `fail`.
+   - `unknown_evidence` (blocker): citação que não está nas evidências do mesmo tenant (inclui outro tenant);
+   - `formal_hours_not_formal` (blocker): `formal_hours_event_ids` que não é `FORMAL_HOURS_DECLARED` de origem `user`/`formal_system`;
+   - `formal_data_in_text` (major): horas ou valores (`120 horas`, `40h`, `R$`) escritos no texto; `%` e `p.p.` são permitidos;
+   - `eligibility_assertion` (blocker): texto afirma elegibilidade ou enquadramento (`eligibility_note` fixa fica de fora);
+   - `prompt_injection` (major): evidência citada contém instrução embutida.
+2. `Verifier.verify(artifact, evidence)`: LLM independente que recebe **só** o artefato e as evidências citadas, envelopadas como `<evidence untrusted="true">` (`build_checker_input`, sem parâmetro para raciocínio do Maker). Prompt versionado em `agent/prompts/checker/v1.md`.
+   - `OpenAICompatibleVerifier`: padrão **Featherless** (`FEATHERLESS_BASE_URL`, `FEATHERLESS_API_KEY`, `CHECKER_MODEL`); trocar de provedor é só config.
+   - `ClaudeVerifier`: fallback com contexto limpo (`claude-sonnet-5-5` por padrão).
+   - Envelope: `< > &` do conteúdo são escapados (não dá para fechar `<evidence>`); citação ausente vira `<evidence missing="true" />`; payload de `FORMAL_HOURS_DECLARED` não vai ao provedor (LGPD).
+   - `ClaudeVerifier` exige `maker_model` e recusa modelo igual ao do Maker.
+   - `pass` com issue `blocker`/`major` ou com `unsupported_claims` vira `fail` (`checker_inconsistent_verdict`); resposta truncada vira `fail` (`checker_truncated`).
+   - `FallbackVerifier`: sem chave, timeout, erro de rede ou HTTP → fallback. Resposta inválida ou recusa **não** cai no fallback: vira `fail` com `checker_invalid_response`/`checker_refused`.
+3. `verify_artifact(...)` → `VerificationOutcome.status`: `draft` (checks falharam; o Maker refaz, máx. 2), `verified` (Checker `pass`) ou `needs_human` (Checker discorda, com as divergências).
+4. `verification_event(...)` monta o `VERIFICATION_RESULT` para `EvidenceService.append`: actor `agent`/`checker` com o modelo usado, payload com `status`, `prompt_version` e os dois resultados.
+5. Ambos retornam `VerificationResult(verdict, issues[], unsupported_claims[], checker)`. Códigos do Checker LLM: `unsupported_by_evidence`, `negative_result_omitted`, `formal_data_in_text`, `eligibility_assertion`, `prompt_injection`, `contradiction` (mesmo vocabulário dos eval cases de relatórios, PR #43). `negative_result_omitted` fica com o Checker até o ledger ter desfecho estruturado de experimento.
 
 ## 5. API HTTP do MVP (prefixo `/api/v1`)
 
