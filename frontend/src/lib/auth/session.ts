@@ -178,7 +178,24 @@ export function sameOriginJson(request: Request): boolean {
   const site = request.headers.get("sec-fetch-site");
   if (site !== null && site !== "same-origin") return false;
   const origin = request.headers.get("origin");
-  return origin !== null && origin === new URL(request.url).origin;
+  return origin !== null && origin === publicOrigin(request);
+}
+
+function firstForwarded(value: string | null): string | undefined {
+  const first = value?.split(",")[0]?.trim();
+  return first ? first : undefined;
+}
+
+/**
+ * Origem pública vista pelo navegador. Atrás do proxy do Railway/Vercel, `request.url` é o
+ * endereço interno do container; o host e o protocolo públicos vêm de `X-Forwarded-*`
+ * (definidos pela borda). O navegador não deixa um site terceiro forjar `Origin`.
+ */
+export function publicOrigin(request: Request): string {
+  const url = new URL(request.url);
+  const proto = firstForwarded(request.headers.get("x-forwarded-proto")) ?? url.protocol.replace(/:$/, "");
+  const host = firstForwarded(request.headers.get("x-forwarded-host")) ?? request.headers.get("host") ?? url.host;
+  return `${proto}://${host}`;
 }
 
 export function authError(status: number, message: string): Response {

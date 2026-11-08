@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { DemoSessionStore, SESSION_TTL_SECONDS, SignedSessionStore, sessionStore } from "../session";
+import { DemoSessionStore, SESSION_TTL_SECONDS, SignedSessionStore, sameOriginJson, sessionStore } from "../session";
 
 const SECRET = "s".repeat(40);
 
@@ -57,5 +57,27 @@ describe("sessionStore()", () => {
 
     vi.stubEnv("BASHO_DEMO_SESSION_SECRET", "");
     expect(sessionStore()).toBeInstanceOf(DemoSessionStore);
+  });
+});
+
+describe("origem atrás de proxy (Railway/Vercel)", () => {
+  const behindProxy = (origin: string) => new Request("http://10.0.0.5:8080/api/auth/login", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin,
+      host: "10.0.0.5:8080",
+      "x-forwarded-host": "basho.example",
+      "x-forwarded-proto": "https",
+    },
+  });
+
+  test("aceita a origem pública informada pela borda", () => {
+    expect(sameOriginJson(behindProxy("https://basho.example"))).toBe(true);
+  });
+
+  test("recusa outra origem e o endereço interno", () => {
+    expect(sameOriginJson(behindProxy("https://evil.test"))).toBe(false);
+    expect(sameOriginJson(behindProxy("http://10.0.0.5:8080"))).toBe(false);
   });
 });
