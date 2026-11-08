@@ -25,11 +25,11 @@ export function BashoMark({ className }: { className?: string }) {
 }
 
 /** Marca + nome em serifa, como no logotipo. O texto acessível é o nome do produto. */
-export function BashoLogo({ className, markClassName }: { className?: string; markClassName?: string }) {
+export function BashoLogo({ className, markClassName, nameClassName }: { className?: string; markClassName?: string; nameClassName?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <BashoMark className={markClassName} />
-      <span className="font-serif text-[1.65rem] leading-none font-semibold tracking-tight">basho</span>
+      <span className={cn("font-serif text-[1.65rem] leading-none font-semibold tracking-tight", nameClassName)}>basho</span>
     </span>
   );
 }
