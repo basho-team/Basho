@@ -1,5 +1,7 @@
 # Arquitetura do Basho
 
+> **Proposta em revisão:** a [ADR-0008](adr/0008-autonomia-documental-lei-do-bem.md) propõe uma arquitetura-alvo alinhada ao Manual regulatório de autonomia (Lei do Bem), descrita em [arquitetura.md](arquitetura.md). Até a aceitação, **este documento e as ADRs aceitas prevalecem**.
+
 > Documento vivo. Toda mudança estrutural exige uma ADR em [`docs/adr/`](adr/). Em caso de conflito, **a ADR mais recente aceita prevalece** sobre este texto, e este texto deve ser atualizado.
 
 ## 1. Visão
