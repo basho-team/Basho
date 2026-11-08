@@ -40,6 +40,7 @@ from basho.evidence.contracts import (
     NewEvidenceEvent,
 )
 from basho.evidence.domain.rules import EvidenceNotFoundError
+from basho.evidence.propagation import CorrectionPropagation
 from basho.identity import HumanIdentity, HumanRole
 from basho.projects.ledger_view import VIEW_KINDS, ArtifactView, build_artifacts, decision_of
 from basho.projects.models import (
@@ -161,6 +162,7 @@ def _human_actor(human: HumanIdentity) -> Actor:
 
 class ProjectService:
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._repository = ProjectRepository(session)
         self._evidence = EvidenceService(session)
 
@@ -251,6 +253,8 @@ class ProjectService:
         state = await self._state(tenant_id, row.project_id)
         if row.kind == PendingKind.APPROVAL_REQUIRED:
             raise ProjectConflictError("approval_via_artifact_endpoint")
+        if human.role.value != row.assignee_role:
+            raise ProjectForbiddenError("só o papel designado responde à pendência")
         status = state.pending_status(row)
         if status is not PendingStatus.OPEN:
             raise ProjectConflictError("pending_closed", status.value)
@@ -275,6 +279,8 @@ class ProjectService:
                 is_synthetic=row.is_synthetic,
             )
         )
+        # Mesma transação: o que cita o artefato corrigido vai para needs_review (#11).
+        await CorrectionPropagation(self._session).propagate(tenant_id, event.id)
         await self._repository.insert(
             PendingAnswerRow,
             {
@@ -366,6 +372,7 @@ class ProjectService:
                 "decision": body.decision.value,
                 "from_status": status.value,
                 "to_status": target.value,
+                "status": target.value,  # mesma chave dos status_changed da propagação (#11)
                 "comment": body.comment,
                 "decided_role": human.role.value,
                 "identity_verified": False,  # placeholder de identidade até #47
@@ -436,7 +443,7 @@ class ProjectService:
                         "source_key": spec.source_key,
                         "title": spec.title,
                         "question": spec.question,
-                        "assignee_role": spec.assignee_role,
+                        "assignee_role": spec.assignee_role.value,
                         "artifact_event_id": view.event.id,
                         "verification_event_id": latest.id,
                         "is_synthetic": view.event.is_synthetic,

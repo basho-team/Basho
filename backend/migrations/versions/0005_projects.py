@@ -105,6 +105,8 @@ def _create_pending() -> None:
             is_synthetic           boolean     NOT NULL DEFAULT false,
             created_at             timestamptz NOT NULL DEFAULT now(),
             CONSTRAINT ck_pending_items_kind CHECK (kind IN ({_in_list(_PENDING_KINDS)})),
+            CONSTRAINT ck_pending_items_assignee_role
+                CHECK (assignee_role IN ({_in_list(_ANSWER_ROLES)})),
             CONSTRAINT uq_pending_items_tenant_id UNIQUE (tenant_id, id),
             -- projeção idempotente: uma pendência por (veredito, item)
             CONSTRAINT uq_pending_items_source

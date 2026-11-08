@@ -36,7 +36,7 @@ from basho.projects.service import (
 router = APIRouter(tags=["projects"])
 
 NOT_FOUND_DETAIL = "recurso não encontrado"
-FORBIDDEN_DETAIL = "papel sem permissão para esta ação formal"
+FORBIDDEN_DETAIL = "papel sem permissão para esta ação"
 INVALID_DETAIL = "resposta inválida para esta pendência"
 TOO_LARGE_DETAIL = "projeto com histórico acima do limite de leitura"
 CONFLICT_DETAILS = {
@@ -120,7 +120,7 @@ async def get_dossier(project_id: UUID, request: Request) -> DossierOut:
 async def answer_pending(
     pending_id: UUID, body: PendingAnswerIn, request: Request, human: Human
 ) -> PendingAnswerOut | JSONResponse:
-    """Ação humana: grava `user_correction` com `supersedes` = artefato."""
+    """Ação humana do papel designado: `user_correction` com `supersedes` = artefato."""
     try:
         async with _service(request) as service:
             return await service.answer(_tenant(request), pending_id, body, human)

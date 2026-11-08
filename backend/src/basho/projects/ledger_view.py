@@ -17,6 +17,7 @@ from basho.agent.artifacts import MissingInformation
 from basho.agent.verifier import VerificationResult
 from basho.compliance.api_contracts import ApprovalDecision, PendingKind
 from basho.evidence.contracts import ArtifactStatus, EventKind, EventSource, EvidenceEvent
+from basho.identity import HumanRole
 
 ARTIFACT_TYPE_KEY = "artifact_type"
 DECISION_KINDS = frozenset({EventKind.USER_CONFIRMATION, EventKind.STATUS_CHANGED})
@@ -37,6 +38,15 @@ APPROVAL_QUESTION = "Registro verificado pelo Checker. Aprovar ou rejeitar é a�
 CHECKER_KEY = "checker"
 APPROVAL_KEY = "approval"
 MISSING_KEY_PREFIX = "missing:"
+# `ask_role` do Maker é texto livre; a pendência guarda o papel humano que pode respondê-la.
+RESEARCHER_ALIASES = frozenset({"researcher", "pesquisador", "pesquisadora"})
+
+
+def assignee_role(ask_role: str) -> HumanRole:
+    """Papel que responde à lacuna: pesquisador ou, por padrão, o gestor."""
+    if ask_role.strip().casefold() in RESEARCHER_ALIASES:
+        return HumanRole.RESEARCHER
+    return HumanRole.MANAGER
 
 
 @dataclass(frozen=True)
@@ -47,7 +57,7 @@ class PendingSpec:
     kind: PendingKind
     title: str
     question: str
-    assignee_role: str
+    assignee_role: HumanRole
     activity_id: UUID | None
 
 
@@ -142,13 +152,19 @@ class ArtifactView:
         if latest.payload["status"] == ArtifactStatus.NEEDS_HUMAN:
             specs.append(
                 self._spec(
-                    CHECKER_KEY, PendingKind.CHECKER_DISAGREEMENT, CHECKER_QUESTION, "researcher"
+                    CHECKER_KEY,
+                    PendingKind.CHECKER_DISAGREEMENT,
+                    CHECKER_QUESTION,
+                    HumanRole.RESEARCHER,
                 )
             )
         else:
             specs.append(
                 self._spec(
-                    APPROVAL_KEY, PendingKind.APPROVAL_REQUIRED, APPROVAL_QUESTION, "manager"
+                    APPROVAL_KEY,
+                    PendingKind.APPROVAL_REQUIRED,
+                    APPROVAL_QUESTION,
+                    HumanRole.MANAGER,
                 )
             )
         for index, raw in enumerate(self.draft.get("missing") or ()):
@@ -161,12 +177,12 @@ class ArtifactView:
                     f"{MISSING_KEY_PREFIX}{index}",
                     PendingKind.MISSING_JUSTIFICATION,
                     missing.question,
-                    missing.ask_role,
+                    assignee_role(missing.ask_role),
                 )
             )
         return specs
 
-    def _spec(self, key: str, kind: PendingKind, question: str, role: str) -> PendingSpec:
+    def _spec(self, key: str, kind: PendingKind, question: str, role: HumanRole) -> PendingSpec:
         return PendingSpec(key, kind, self.title, question, role, self.activity_id)
 
 

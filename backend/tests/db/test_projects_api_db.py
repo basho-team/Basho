@@ -15,10 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from basho.config import Settings
 from basho.db import tenant_session
 from basho.evidence import EvidenceService
-from basho.evidence.contracts import EventKind
+from basho.evidence.contracts import EventKind, EventSource, NewEvidenceEvent
+from basho.evidence.propagation import CorrectionPropagation
 from basho.main import create_app
 from conftest import VALID_ENV
-from project_db_factories import SeededArtifact, seed_artifact, seed_project
+from project_db_factories import MAKER, SeededArtifact, seed_artifact, seed_project
 
 pytestmark = pytest.mark.db
 
@@ -93,8 +94,12 @@ async def _pending(client: AsyncClient, project_id: UUID, **params: Any) -> list
     return items
 
 
-def _of_kind(items: list[dict[str, Any]], kind: str) -> dict[str, Any]:
-    return next(item for item in items if item["kind"] == kind)
+def _of_kind(items: list[dict[str, Any]], kind: str, role: str | None = None) -> dict[str, Any]:
+    return next(
+        item
+        for item in items
+        if item["kind"] == kind and (role is None or item["assignee_role"] == role)
+    )
 
 
 # --- leitura -----------------------------------------------------------------------
@@ -189,7 +194,7 @@ async def test_answer_records_user_correction_superseding_the_artifact(
 ) -> None:
     # Arrange
     project_id, seeded = await seed("needs_human", with_missing=True)
-    missing = _of_kind(await _pending(client, project_id), "missing_justification")
+    missing = _of_kind(await _pending(client, project_id), "missing_justification", "researcher")
 
     # Act
     response = await client.post(
@@ -227,6 +232,72 @@ async def test_answering_twice_returns_409(client: AsyncClient, seed: Seed) -> N
     # Assert
     assert response.status_code == 409
     assert response.json()["code"] == "pending_closed"
+
+
+async def test_only_the_assignee_role_answers_the_pending(client: AsyncClient, seed: Seed) -> None:
+    # Arrange: "coordenador" vira manager; "pesquisador" vira researcher
+    project_id, _ = await seed("needs_human", with_missing=True)
+    items = await _pending(client, project_id)
+    for_manager = _of_kind(items, "missing_justification", "manager")
+    for_researcher = _of_kind(items, "missing_justification", "researcher")
+
+    # Act
+    wrong_role = await client.post(
+        f"/api/v1/pending/{for_manager['id']}/answer",
+        json={"answer": "Eu sei."},
+        headers=RESEARCHER,
+    )
+    also_wrong = await client.post(
+        f"/api/v1/pending/{for_researcher['id']}/answer",
+        json={"answer": "Eu sei."},
+        headers=MANAGER,
+    )
+    right_role = await client.post(
+        f"/api/v1/pending/{for_manager['id']}/answer",
+        json={"answer": "40h no RH."},
+        headers=MANAGER,
+    )
+
+    # Assert
+    assert wrong_role.status_code == 403
+    assert also_wrong.status_code == 403
+    assert wrong_role.json() == {"detail": "papel sem permissão para esta ação"}
+    assert right_role.status_code == 201
+
+
+async def test_answer_propagates_needs_review_to_dependents(
+    app: FastAPI, client: AsyncClient, seed: Seed, tenant_id: UUID
+) -> None:
+    # Arrange: um segundo artefato cita o artefato que vai ser corrigido
+    project_id, seeded = await seed("needs_human", with_missing=True)
+    async with tenant_session(app.state.session_factory, tenant_id) as session:
+        dependent = await EvidenceService(session).append(
+            NewEvidenceEvent(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                kind=EventKind.ACTIVITY_RECORD,
+                source=EventSource.AGENT,
+                actor=MAKER,
+                payload={
+                    "artifact_type": "ActivityRecordDraft",
+                    "draft": {"claims": [{"evidence_ids": [str(seeded.artifact.id)]}]},
+                },
+                is_synthetic=True,
+            )
+        )
+    item = _of_kind(await _pending(client, project_id), "checker_disagreement")
+
+    # Act
+    response = await client.post(
+        f"/api/v1/pending/{item['id']}/answer", json={"answer": "Corrigido."}, headers=RESEARCHER
+    )
+
+    # Assert
+    assert response.status_code == 201
+    async with tenant_session(app.state.session_factory, tenant_id) as session:
+        reviews = await CorrectionPropagation(session).pending_reviews(tenant_id, project_id)
+    assert [review.artifact_event_id for review in reviews] == [dependent.id]
+    assert reviews[0].cause_event_id == UUID(response.json()["correction_event_id"])
 
 
 async def test_approval_pending_cannot_be_answered(client: AsyncClient, seed: Seed) -> None:
@@ -319,7 +390,7 @@ async def test_needs_human_cannot_be_approved_but_can_be_rejected(
 async def test_corrected_artifact_cannot_be_approved(client: AsyncClient, seed: Seed) -> None:
     # Arrange: resposta humana devolve o artefato para draft (o Maker refaz)
     project_id, seeded = await seed("verified", with_missing=True)
-    missing = _of_kind(await _pending(client, project_id), "missing_justification")
+    missing = _of_kind(await _pending(client, project_id), "missing_justification", "researcher")
     await client.post(
         f"/api/v1/pending/{missing['id']}/answer", json={"answer": "Resposta."}, headers=RESEARCHER
     )
