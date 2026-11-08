@@ -87,17 +87,15 @@ class PublicationWorker:
             row = (await session.execute(statement)).scalar_one_or_none()
             if row is None:
                 return None
+            attempts = row.attempts + 1
             await session.execute(
                 update(PublicationRow)
                 .where(PublicationRow.tenant_id == self._tenant_id, PublicationRow.id == row.id)
-                .values(
-                    status=PublicationStatus.RUNNING.value,
-                    attempts=row.attempts + 1,
-                    updated_at=now,
-                )
+                .values(status=PublicationStatus.RUNNING.value, attempts=attempts, updated_at=now)
+                .execution_options(synchronize_session=False)
             )
             session.expunge(row)
-            row.attempts += 1
+            row.attempts = attempts  # fora da sessão: o contador do banco já foi gravado acima
             return row
 
     async def _save(self, publication_id: UUID, **values: object) -> None:

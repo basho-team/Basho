@@ -158,6 +158,7 @@ class Worker:
         self._verifier = verifier
         self._config = config
         self._clock = clock
+        self._repos: dict[UUID, RepoRef | None] = {}
 
     async def process_one(self) -> UUID | None:
         """Processa um run liberado; `None` se a fila estiver vazia."""
@@ -179,13 +180,13 @@ class Worker:
             error = RunError(code=INVALID_TASK, message="tarefa inválida", retryable=False)
             await self._fail(stored, error, MakerResult(MakerStatus.FAILED, (), 0))
             return stored.run.id
-        repo = await self._repo_for(stored.project_id)
-        sync_error = await self._sync_github(stored, repo)
+        self._repos[stored.project_id] = await self._repo_for(stored.project_id)
+        sync_error = await self._sync_github(stored)
         if sync_error is not None:
             await self._fail(stored, sync_error, MakerResult(MakerStatus.FAILED, (), 0))
             return stored.run.id
         try:
-            result = await self._maker(stored, persistence, repo).run(task)
+            result = await self._maker(stored, persistence).run(task)
         except Exception as exc:  # falha explícita: registrada no run, nunca engolida em silêncio
             await persistence.rollback()
             log.error("agent_run_crashed", error_type=type(exc).__name__)
@@ -215,11 +216,9 @@ class Worker:
             is_synthetic=stored.is_synthetic,
         )
 
-    def _maker(
-        self, stored: StoredRun, persistence: PersistenceTransaction, repo: RepoRef | None
-    ) -> Maker:
+    def _maker(self, stored: StoredRun, persistence: PersistenceTransaction) -> Maker:
         tenant_id = self._config.tenant_id
-        registry = ToolRegistry(self._tools(stored.project_id, repo))
+        registry = ToolRegistry(self._tools(stored.project_id))
         policy = ToolPolicy(
             registry,
             SessionAuditSink(self._factory, tenant_id),
@@ -235,6 +234,12 @@ class Worker:
             settings=self._config.model,
         )
 
+    def _current_repo(self, project_id: UUID) -> RepoRef | None:
+        """Repositório resolvido para o run em andamento (link ou mapa de configuração)."""
+        if project_id in self._repos:
+            return self._repos[project_id]
+        return self._config.repo_for(project_id)
+
     async def _repo_for(self, project_id: UUID) -> RepoRef | None:
         """Repositório do projeto: link GitHub autorizado (ADR-0010) ou o mapa de configuração."""
         if self._config.github is None:
@@ -249,12 +254,13 @@ class Worker:
             logger.warning("repo_link_lookup_failed", error_type=type(exc).__name__)
         return self._config.repo_for(project_id)
 
-    async def _sync_github(self, stored: StoredRun, repo: RepoRef | None) -> RunError | None:
+    async def _sync_github(self, stored: StoredRun) -> RunError | None:
         """Ingere commits/PRs do repositório do projeto no ledger antes do Maker (#7).
 
         Transação curta e própria (sem LLM); idempotente. Sem repositório configurado, não faz
         nada. Falha do GitHub vira `RunError` com o código estável do conector.
         """
+        repo = self._current_repo(stored.project_id)
         github = self._config.github
         if repo is None or github is None:
             return None
@@ -278,7 +284,7 @@ class Worker:
         )
         return None
 
-    def _tools(self, project_id: UUID, repo: RepoRef | None) -> list[Tool]:
+    def _tools(self, project_id: UUID) -> list[Tool]:
         """Ledger e GitHub reais quando o projeto tem repositório; senão GitHub simulado.
 
         Registros internos (`ledger_record_draft`, `pending_item_open`) seguem simulados até as
@@ -290,6 +296,7 @@ class Worker:
             LedgerRecordDraft(internal),
             PendingItemOpen(internal),
         ]
+        repo = self._current_repo(project_id)
         github = self._config.github
         if repo is not None and github is not None:
             return [*tools, *build_github_tools(github.client, repo)]
