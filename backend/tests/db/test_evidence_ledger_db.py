@@ -74,7 +74,8 @@ async def test_truncate_is_rejected_by_trigger_even_for_owner(
 ) -> None:
     async with owner_session_factory() as session, session.begin():
         with pytest.raises(DBAPIError, match=APPEND_ONLY):
-            await session.execute(text("TRUNCATE evidence_events"))
+            # CASCADE: sem ele a FK de report_versions (#39) barra antes do trigger
+            await session.execute(text("TRUNCATE evidence_events CASCADE"))
 
 
 async def test_correction_appends_new_event_and_leaves_original_untouched(
@@ -370,3 +371,29 @@ async def test_integrity_error_on_insert_becomes_generic_validation_error(
                 make_event(tenant_id=tenant_id, project_id=project_id)
             )
     assert "secret-detail" not in str(raised.value)
+
+
+async def test_missing_ids_returns_only_ids_absent_from_tenant_and_project(
+    session_factory: Factory,
+) -> None:
+    # Arrange
+    tenant_id, project_id = fresh_ids()
+    other_tenant, other_project = fresh_ids()
+    async with tenant_session(session_factory, tenant_id) as session:
+        service = EvidenceService(session)
+        mine = await service.append(make_event(tenant_id=tenant_id, project_id=project_id))
+        elsewhere = await service.append(make_event(tenant_id=tenant_id, project_id=other_project))
+    async with tenant_session(session_factory, other_tenant) as session:
+        foreign = await EvidenceService(session).append(
+            make_event(tenant_id=other_tenant, project_id=project_id)
+        )
+    unknown = uuid4()
+
+    # Act
+    async with tenant_session(session_factory, tenant_id) as session:
+        missing = await EvidenceService(session).missing_ids(
+            tenant_id, project_id, [mine.id, elsewhere.id, foreign.id, unknown, unknown]
+        )
+
+    # Assert
+    assert missing == {elsewhere.id, foreign.id, unknown}

@@ -15,6 +15,7 @@ Interfaces combinadas na hora 0 para que backend, agente e frontend avancem em p
 | Fixtures GitHub sintéticas | `backend/tests/fixtures/github/` | #7, #8, #14 |
 | Exemplo de artefato | `backend/tests/fixtures/activity_record_draft.json` | #9, #12, #13 |
 | Exemplo de relatório do pesquisador | `backend/tests/fixtures/research_report_draft.json` | #9, #12, #38 |
+| Persistência e API de relatórios (`report_versions`, `report_reviews`) | `backend/src/basho/reports/{schemas,service,api}.py` | #39, #42, frontend |
 
 ## 1. Evidence Ledger (ADR-0003)
 - `NewEvidenceEvent` → entrada de `EvidenceService.append`; o serviço calcula `id`, `content_hash` e `created_at`. O `content_hash` é o SHA-256 (hex minúsculo) do JSON canônico (chaves ordenadas, separadores `,`/`:`, UTF-8, sem NaN) do **envelope de conteúdo imutável** — `tenant_id`, `project_id`, `kind`, `source`, `source_ref`, `actor`, `payload`, `supersedes`, `is_synthetic` — e não apenas do payload, para que a adulteração de qualquer desses campos seja detectável. `id` e `created_at` ficam fora do hash. O envelope é montado campo a campo e versionado (`HASH_VERSION`, coluna `hash_version`).
@@ -63,6 +64,8 @@ Implementado em `basho.agent.checks` e `basho.agent.checker` (#9). Vale para `Ac
 | POST | `/artifacts/{id}/approval` | `ApprovalIn` | **formal, só humano** |
 | GET | `/projects/{id}/dossier` | `DossierEntryOut[]` (inclui `AgentRunMetrics`) | leitura |
 | POST | `/projects/{id}/agent-runs` | dispara job do agente → `{run_id}` | humano |
+| GET | `/reports/{version_id}` | `ReportVersionOut` (versão + status por papel da versão atual) | leitura |
+| POST | `/reports/{version_id}/review` | `ReviewIn` → `ReviewOut` (201); versão que não é a atual → **409** `VersionConflictOut` | **formal, só humano** |
 
 O frontend gera tipos a partir de `/openapi.json` e usa mocks desses schemas até #5 ficar pronta.
 
@@ -82,4 +85,12 @@ O mapa completo está na [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestra
 
 **Execução** (`agent/runs.py`). `AgentRun(id, tenant_id, task_kind, prompt_version, status, correlation_id, parent_run_id, idempotency_key, attempts, max_attempts, created_at, updated_at, error)`. `RunStatus` é estado de execução, **nunca** de conformidade ou revisão. Transições (`ALLOWED_TRANSITIONS`, `can_transition`): `queued → running | failed`; `running → queued` (retry transitório) `| awaiting_input | completed | failed`; `awaiting_input`, `completed` e `failed` são terminais. A resposta humana a `awaiting_input` cria novo run com o mesmo `correlation_id` e `parent_run_id`. Invariantes: `attempts ≤ max_attempts`; `running` exige `attempts ≥ 1`; `failed` exige `RunError(code, message, retryable)` (sem segredos/PII); `completed` e `awaiting_input` sem `error`; `queued` com `error` só se `retryable` e com tentativas restantes; `updated_at ≥ created_at`. Mudança de estado só por `transition_run` / `fail_or_retry`, que revalidam (`model_copy` do Pydantic não valida); `fail_or_retry` decide por código entre retry e `failed`.
 
-Ainda previstos (dados): projeção `report_versions` e persistência de `agent_runs`.
+**Persistência de relatórios** (#39, sobre o domínio de `basho.reports` do PR #43). Tabelas `reporting_periods`, `report_versions` e `report_reviews` (migração `0003`), append-only (trigger + REVOKE), com `tenant_id` e RLS forçada.
+- `report_versions` guarda o `ReportVersion` do domínio: `draft` (JSONB), IDs de item em colunas paralelas (`claim_ids`, `experiment_ids`, `missing_ids`), `change` (`ChangeRecord`, JSONB), `supersedes_id`, `content_hash` (SHA-256 do JSON canônico do draft), `cited_evidence_ids` e `evidence_event_id`.
+- Cada versão é também um evento `activity_record` no ledger, com `supersedes` apontando para o evento da versão anterior. Cada revisão gera `user_confirmation` (`text_approved`) ou `user_correction` (`changes_requested`, com `supersedes` para o evento da versão revisada).
+- `POST /reports/{id}/review`: o domínio (`review_version`) decide; versão que não é a atual → `VersionConflictError` → 409, sem gravar nada. `correction` (só com `changes_requested`) vira `ReportCorrection` → versão N+1; a versão revisada é preservada e a aprovação dela não vale para a nova.
+- Citações são conferidas no ledger (mesmo tenant e projeto); `formal_hours_event_ids` só aceitam `formal_hours_declared`.
+- Identidade do revisor (placeholder até #47): headers `X-Basho-User-Id`/`X-Basho-Role` só valem com `X-Basho-Identity-Secret` igual a `REVIEWER_IDENTITY_SECRET` (segredo do BFF, tempo constante); sem segredo configurado → 503. Eventos de revisão gravam `identity_verified: false`.
+- Privilégios: `basho_worker` cria versões, mas só **lê** `report_reviews` (revisão é ação formal); `basho_api` lê e insere nas três tabelas.
+
+Ainda previsto (dados): persistência de `agent_runs`.
