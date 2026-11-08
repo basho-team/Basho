@@ -8,6 +8,7 @@ necessário (LGPD): login do autor, sem e-mail nem nome.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
@@ -40,6 +41,20 @@ def pull_request_ref(repo: RepoRef, number: int) -> str:
     return f"{repo.full_name}#{number}"
 
 
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+_STATES = frozenset({"open", "closed"})
+
+
+def _timestamp(value: object) -> str | None:
+    """Só datas ISO 8601 válidas entram em `data`/payload; o resto vira None."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).isoformat()
+    except ValueError:
+        return None
+
+
 def _text(value: object) -> str:
     return value[:MAX_TEXT_CHARS] if isinstance(value, str) else ""
 
@@ -53,7 +68,7 @@ def _login(user: object) -> str | None:
 def commit_payload(repo: RepoRef, item: dict[str, Any]) -> dict[str, Any] | None:
     sha = item.get("sha")
     commit = item.get("commit")
-    if not isinstance(sha, str) or not isinstance(commit, dict):
+    if not isinstance(sha, str) or not _SHA.fullmatch(sha) or not isinstance(commit, dict):
         return None
     author = commit.get("author") if isinstance(commit.get("author"), dict) else {}
     return {
@@ -61,7 +76,7 @@ def commit_payload(repo: RepoRef, item: dict[str, Any]) -> dict[str, Any] | None
         "sha": sha,
         "message": _text(commit.get("message")),
         "author_login": _login(item.get("author")),
-        "committed_at": author.get("date") if isinstance(author, dict) else None,
+        "committed_at": _timestamp(author.get("date")) if isinstance(author, dict) else None,
     }
 
 
@@ -74,9 +89,9 @@ def pull_request_payload(repo: RepoRef, item: dict[str, Any]) -> dict[str, Any] 
         "number": number,
         "title": _text(item.get("title")),
         "body": _text(item.get("body")),
-        "state": item.get("state") if isinstance(item.get("state"), str) else None,
-        "created_at": item.get("created_at"),
-        "merged_at": item.get("merged_at"),
+        "state": item.get("state") if item.get("state") in _STATES else None,
+        "created_at": _timestamp(item.get("created_at")),
+        "merged_at": _timestamp(item.get("merged_at")),
         "author_login": _login(item.get("user")),
     }
 

@@ -68,7 +68,9 @@ async def test_network_failure_is_retryable() -> None:
     assert excinfo.value.retryable
 
 
-@pytest.mark.parametrize("name", ["owner", "../etc/passwd", "a/b/c", "owner/repo?x=1", ""])
+@pytest.mark.parametrize(
+    "name", ["owner", "../etc/passwd", "a/b/c", "owner/repo?x=1", "", "owner/..", "owner/."]
+)
 def test_repo_ref_rejects_anything_but_owner_slash_name(name: str) -> None:
     with pytest.raises(ValueError, match="owner/name"):
         RepoRef(name)
@@ -118,7 +120,7 @@ async def test_get_pull_request_returns_identifiers_in_data() -> None:
         "repo": REPO.full_name,
         "number": 7,
         "state": "closed",
-        "created_at": "2026-10-04T12:00:00Z",
+        "created_at": "2026-10-04T12:00:00+00:00",
         "merged_at": None,
     }
 
@@ -161,3 +163,36 @@ async def test_github_error_becomes_tool_error_code() -> None:
     assert result.status is ToolCallStatus.ERROR
     assert result.error == GithubErrorCode.RATE_LIMITED.value
     assert fake.requests == []
+
+
+async def test_pagination_refuses_next_link_to_another_host() -> None:
+    # Arrange: o token não pode seguir para fora da API configurada
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        link = '<https://evil.example/repos/x/y/commits?page=2>; rel="next"'
+        return httpx.Response(200, json=[], headers={"link": link})
+
+    # Act / Assert
+    with pytest.raises(GithubError) as excinfo:
+        await client_for(handler).list_commits(REPO)
+    assert excinfo.value.code is GithubErrorCode.INVALID_RESPONSE
+    assert len(seen) == 1
+
+
+def test_payloads_only_keep_well_formed_identifiers() -> None:
+    # Arrange
+    from basho.connectors.github.ingest import commit_payload, pull_request_payload
+    from github_support import commit, pull
+
+    bad_pull = pull(8, "t", "b") | {"state": "<script>", "created_at": "ontem", "merged_at": 5}
+
+    # Act
+    bad_sha = commit_payload(REPO, commit("not-a-sha", "msg"))
+    pr = pull_request_payload(REPO, bad_pull)
+
+    # Assert
+    assert bad_sha is None
+    assert pr is not None
+    assert (pr["state"], pr["created_at"], pr["merged_at"]) == (None, None, None)

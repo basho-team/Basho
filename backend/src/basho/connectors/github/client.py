@@ -61,7 +61,8 @@ class RepoRef:
     full_name: str
 
     def __post_init__(self) -> None:
-        if not _REPO.fullmatch(self.full_name):
+        name = self.full_name.split("/")[-1]
+        if not _REPO.fullmatch(self.full_name) or set(name) == {"."}:
             msg = "repositório deve ser owner/name"
             raise ValueError(msg)
 
@@ -112,6 +113,9 @@ class GithubClient:
                 raise GithubError(GithubErrorCode.INVALID_RESPONSE)
             items.extend(item for item in page if isinstance(item, dict))
             url = _next_link(response)
+            if url is not None and not url.startswith(self._api_url + "/"):
+                # Defesa em profundidade: o token só segue para o próprio host da API.
+                raise GithubError(GithubErrorCode.INVALID_RESPONSE)
             query = None  # o link `next` já carrega os parâmetros
         return items[:bounded]
 

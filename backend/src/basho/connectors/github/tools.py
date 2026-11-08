@@ -131,7 +131,11 @@ class GithubCreateIssueTool:
 def build_github_tools(
     client: GithubClient, repo: RepoRef
 ) -> tuple[GithubListCommitsTool, GithubGetPullRequestTool, GithubCreateIssueTool]:
-    """As três tools GitHub do MVP, presas ao repositório do projeto."""
+    """As três tools GitHub do MVP, presas ao repositório do projeto.
+
+    O chamador (worker, #10) resolve `repo` a partir da configuração do projeto **do tenant
+    da sessão**; o `tenant_id` recebido em `run()` não é usado para escolher o repositório.
+    """
     return (
         GithubListCommitsTool(client, repo),
         GithubGetPullRequestTool(client, repo),
