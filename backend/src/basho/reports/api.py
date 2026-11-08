@@ -1,15 +1,14 @@
 """Rotas HTTP de versões de relatório (`/api/v1/reports`). Sem regra de negócio."""
 
-import hmac
 from contextlib import AbstractAsyncContextManager
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from basho.db import tenant_session
+from basho.identity import HumanIdentity, current_human
 from basho.reports.corrections import InvalidCorrectionError
 from basho.reports.schemas import ReportVersionOut, ReviewIn, ReviewOut, VersionConflictOut
 from basho.reports.service import ReportNotFoundError, ReportService, ReportValidationError
@@ -17,54 +16,9 @@ from basho.reports.versions import ReviewerNotAllowedError, ReviewerRole, Versio
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
-USER_ID_HEADER = "X-Basho-User-Id"
-ROLE_HEADER = "X-Basho-Role"
-IDENTITY_SECRET_HEADER = "X-Basho-Identity-Secret"  # noqa: S105 -- nome do header
 NOT_FOUND_DETAIL = "relatório não encontrado"
 FORBIDDEN_DETAIL = "revisor sem permissão para este papel neste relatório"
 INVALID_DETAIL = "revisão ou correção inválida para esta versão"
-UNAUTHORIZED_DETAIL = "identidade do revisor ausente ou não confiável"
-UNAVAILABLE_DETAIL = "revisão indisponível: identidade do revisor não configurada"
-
-
-class Reviewer(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    user_id: UUID
-    role: ReviewerRole
-
-
-def _configured_secret(request: Request) -> str:
-    secret: SecretStr | None = request.app.state.settings.reviewer_identity_secret
-    value = "" if secret is None else secret.get_secret_value()
-    if not value:  # vazio conta como ausente: nunca aceitar header vazio
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNAVAILABLE_DETAIL)
-    return value
-
-
-def current_reviewer(
-    request: Request,
-    user_id: str | None = Header(default=None, alias=USER_ID_HEADER),
-    role: str | None = Header(default=None, alias=ROLE_HEADER),
-    identity_secret: str | None = Header(default=None, alias=IDENTITY_SECRET_HEADER),
-) -> Reviewer:
-    """PLACEHOLDER de identidade até existir autenticação real (#47).
-
-    Só aceita `X-Basho-User-Id`/`X-Basho-Role` vindos do BFF que conhece
-    `REVIEWER_IDENTITY_SECRET` (comparação em tempo constante). Sem segredo configurado, a
-    revisão fica fechada (503). A identidade é *afirmada* pelo BFF, não verificada aqui;
-    por isso o evento do ledger grava ``identity_verified: false``.
-    """
-    expected = _configured_secret(request)
-    provided = identity_secret or ""
-    if not hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8")):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=UNAUTHORIZED_DETAIL)
-    try:
-        if user_id is None or role is None:
-            raise ValueError
-        return Reviewer(user_id=UUID(user_id), role=ReviewerRole(role))
-    except ValueError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=UNAUTHORIZED_DETAIL) from None
 
 
 def _scope(request: Request) -> AbstractAsyncContextManager[AsyncSession]:
@@ -92,7 +46,7 @@ async def review_report_version(
     report_version_id: UUID,
     body: ReviewIn,
     request: Request,
-    reviewer: Reviewer = Depends(current_reviewer),  # noqa: B008
+    reviewer: HumanIdentity = Depends(current_human),  # noqa: B008
 ) -> ReviewOut | JSONResponse:
     """Ação formal, só humano (ADR-0005). Versão que não é a atual → 409, nada gravado."""
     tenant_id = request.app.state.settings.tenant_id
@@ -103,7 +57,7 @@ async def review_report_version(
                 report_version_id,
                 body,
                 reviewer_id=reviewer.user_id,
-                reviewer_role=reviewer.role,
+                reviewer_role=ReviewerRole(reviewer.role.value),
             )
     except VersionConflictError as conflict:
         payload = VersionConflictOut(
