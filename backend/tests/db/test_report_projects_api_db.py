@@ -171,3 +171,33 @@ async def test_other_tenant_sees_nothing(
     ):
         listed = await http.get(f"/api/v1/projects/{project}/reports", params=Q, headers=CARLA_H)
         assert listed.json() == []
+
+
+async def test_manager_closes_period_and_system_drafts_every_researcher(
+    app: FastAPI, client: AsyncClient, tenant_id: UUID
+) -> None:
+    project = uuid4()
+    bia = uuid4()
+    for owner, title in ((ANA, "PR #42"), (bia, "b101")):
+        await _evidence(
+            app,
+            tenant_id,
+            project,
+            kind=EventKind.COMMIT_OBSERVED,
+            payload={
+                "title": title,
+                "description": f"Trabalho de {title}.",
+                "researcher_id": str(owner),
+            },
+        )
+    url = f"/api/v1/projects/{project}/period/close"
+    assert (await client.post(url, params=Q, headers=ANA_H)).status_code == 403
+
+    first = (await client.post(url, params=Q, headers=CARLA_H)).json()
+    drafted = {r["status"]["researcher_id"] for r in first["created"]}
+    assert drafted == {str(ANA), str(bia)}
+    for report in first["created"]:
+        assert report["version"]["number"] == 1
+    again = (await client.post(url, params=Q, headers=CARLA_H)).json()
+    assert again["created"] == []
+    assert set(again["already_drafted_or_empty"]) == {str(ANA), str(bia)}

@@ -86,3 +86,12 @@ class ReportReviewFlag(BaseModel):
     superseded_event_id: UUID = Field(description="Evidência original, substituída")
     cause_event_id: UUID = Field(description="Evento de correção que causou a revisão")
     marked_at: datetime
+
+
+class PeriodClosingOut(BaseModel):
+    """Resultado do fechamento autônomo do período (rascunhos por regras, sem LLM)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    created: tuple[ReportVersionOut, ...]
+    already_drafted_or_empty: tuple[UUID, ...]
