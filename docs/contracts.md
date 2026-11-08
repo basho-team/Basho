@@ -49,3 +49,6 @@ O frontend gera tipos a partir de `/openapi.json` e usa mocks desses schemas at�
 
 ## 6. Fixtures
 Todas sintéticas (`_synthetic: true`). O PR #42 tem experimento bem descrito; o #43 é experimento **sem justificativa** (caso principal da demo); o #44 contém **prompt injection** (caso de eval).
+
+## 7. Handoff ResearchOps → Basho (ADR-0009, proposta)
+O mapa completo está na [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestrador.md#mapa-de-contratos-handoff--basho). Contratos novos previstos para a primeira entrega (relatório do pesquisador): `TaskProfile`/`TaskKind` (`agent/tasks.py`), `ClaimStatus` e `ResearchReportDraft` (`agent/artifacts.py`), `RunStatus`/`AgentRun` (`agent/runs.py`), `ReportingPeriod` e projeção `report_versions` (dados). Os contratos acima continuam válidos; os novos os estendem sem quebrá-los.

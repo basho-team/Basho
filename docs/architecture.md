@@ -122,6 +122,8 @@ sequenceDiagram
 
 Detalhes em [ADR-0004](adr/0004-maker-checker-multi-modelo.md). Permissões de tools em [ADR-0005](adr/0005-gates-de-permissao-e-aprovacao-humana.md).
 
+> **Proposta em análise:** a [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestrador.md) organiza o Maker em perfis de tarefa (`research_report`, `coordination`, `technical_fiscal`, `investigation`) coordenados por um orquestrador determinístico no worker, incorporando o [handoff ResearchOps](handoff/README.md). Até o aceite, este diagrama segue normativo.
+
 ## 7. Segurança
 
 Resumo de [ADR-0006](adr/0006-seguranca-rls-lgpd-prompt-injection.md): RLS por `tenant_id`, menor privilégio no banco, LGPD (minimização e separação de dados pessoais), conteúdo externo tratado como **dado, nunca instrução**, audit log imutável, segredos só por variável de ambiente, validação em todas as bordas.

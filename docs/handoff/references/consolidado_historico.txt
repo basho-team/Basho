@@ -1,0 +1,316 @@
+<aside>
+🗂️
+
+**Registro de pesquisa e transferência de conhecimento • Atualização de 07/11/2026.** Este relatório reúne a visão funcional, os problemas, os cenários e o histórico discutidos para o ResearchOps. **Não define arquitetura, quantidade de agentes, módulos definitivos nem escopo aprovado do produto.** Os termos de estrutura utilizados nas discussões são apenas sugestões e referências conceituais. A **IA do Carlos (Claude)** será responsável por propor e definir tecnicamente, junto à equipe, a estrutura do produto, a arquitetura e o desenho do MVP. O papel desta pesquisa é transmitir o conhecimento produzido, e não antecipar essas decisões.
+
+</aside>
+
+## 1. Resumo executivo
+
+O **ResearchOps Agent** é uma plataforma de agentes de IA para empresas de pesquisa e desenvolvimento que criam **soluções tecnológicas**, incluindo software, hardware, automação, IA e outras áreas de engenharia aplicada. O sistema atua durante todo o ciclo de vida de um projeto: estrutura requisitos, acompanha execução e evidências, investiga desvios, coordena correções, prepara entregas e organiza o encerramento.
+
+A proposta não é um painel que apenas informa ao gestor o que falta. **O ResearchOps assume o trabalho operacional de acompanhar, investigar, organizar, comunicar, atualizar registros e conduzir pendências até a resolução.** Os usuários supervisionam o resultado, corrigem interpretações quando necessário e aprovam ações de maior impacto. As correções humanas passam a integrar o contexto do projeto, evitando repetir o problema.
+
+**Proposta de valor:** pesquisadores concentram-se na atividade técnica; coordenadores e gestores recebem projetos acompanhados, entregas comprováveis, registros consistentes e menos trabalho administrativo.
+
+**Cliente inicial pretendido:** pequenas e médias empresas com equipes de P&D que desenvolvem soluções tecnológicas, sobretudo quando trabalham em múltiplos projetos, com compromissos técnicos, prazos, experimentos e obrigações documentais.
+
+## 2. O problema em operações de P&D
+
+A atividade de P&D combina incerteza tecnológica com necessidade de coordenação. Requisitos, hipóteses, protótipos, código, desenhos, ensaios, testes, decisões, gastos e entregas ficam espalhados entre diferentes ferramentas e pessoas.
+
+O trabalho manual ocorre ao longo do processo, não apenas na hora do relatório:
+
+- pesquisadores precisam localizar resultados, explicar mudanças, atualizar tarefas e reorganizar documentação;
+- coordenadores precisam descobrir se uma tarefa concluída realmente atende ao resultado pretendido e quais dependências bloqueiam a equipe;
+- gestores precisam saber quais compromissos e entregas estão demonstrados por evidências, o que precisa de aprovação e o que ameaça os prazos;
+- a equipe precisa reconstruir o histórico técnico quando muda um responsável ou encerra um projeto.
+
+Uma plataforma genérica consegue acompanhar tarefas; mas **a tarefa estar marcada como concluída não prova que uma exigência técnica foi alcançada**. O ResearchOps procura conectar execução técnica, critérios de aceite, evidências e ações operacionais.
+
+## 3. Visão de produto: participação integral no processo
+
+O ResearchOps é pensado como parte da rotina de trabalho, desde a abertura do projeto até a entrega e o encerramento.
+
+| Fase | Trabalho executado pelo sistema | Participação humana |
+| --- | --- | --- |
+| Início | Interpreta escopo, estrutura marcos, objetivos e critérios de aceite; identifica dúvidas | Confere o plano e ajusta prioridades ou requisitos |
+| Desenvolvimento | Acompanha ferramentas técnicas, organiza resultados, vincula experimentos a versões e atualiza registros | Executa pesquisa e confirma interpretações técnicas delicadas |
+| Monitoramento | Verifica eventos, prazos, bloqueios, critérios e evidências ausentes | Corrige ou aprova intervenções quando necessário |
+| Investigação | Busca dados em sistemas conectados, compara evidências, identifica causas prováveis e alternativas | Responde apenas às lacunas que dependem de conhecimento humano |
+| Resolução | Cria e acompanha tarefas, prepara mensagens, atualiza registros e retoma processos interrompidos | Aprova ações contratuais, financeiras, externas ou irreversíveis |
+| Entrega | Verifica critérios e prepara pacote técnico rastreável; acompanha pendências até a revisão final | Revisa conformidade, autoriza entrega e formaliza aceite |
+| Encerramento | Organiza artefatos, histórico, pendências, documentação e transferência de conhecimento | Confere obrigações finais e autoriza o encerramento |
+
+**Princípio de interação:** operação automática por padrão para tarefas autorizadas e reversíveis, com supervisão por exceção. Não exigir aprovação manual a cada leitura, comparação ou atualização documental de baixo risco; tampouco permitir que o agente altere contratos, finanças, permissões ou resultados científicos sem controles apropriados.
+
+**Correções:** quando um usuário marca uma interpretação como incorreta, o sistema registra a correção, atualiza a evidência e reavalia somente as decisões dependentes dela. Correção não deve ser apenas feedback decorativo.
+
+## 4. Capacidades funcionais discutidas — sugestões, não estrutura definida
+
+Nas conversas, surgiram nomes como **Executor**, **Guardian**, **Delivery Agent** e **Governance & Evidence** para explicar tipos de trabalho que o ResearchOps poderia realizar. **Eles não são componentes já decididos.** Não está definido se haverá um único agente, vários agentes, módulos, ferramentas especializadas ou outra estrutura. A avaliação e decisão da arquitetura do produto caberão à IA do Carlos (Claude), em alinhamento com a equipe.
+
+### 4.1. Execução do trabalho técnico e documental (rótulo exploratório: “Executor”)
+
+Possíveis comportamentos:
+
+- Recuperar informações de repositórios, plataformas de experimentos, documentos e tarefas.
+- Relacionar requisitos, decisões, versões e resultados, indicando fontes.
+- Criar e atualizar registros técnicos, documentos e relatórios.
+- Organizar artefatos e registrar pendências específicas.
+- Retomar tarefas após obter novas evidências ou correções.
+
+### 4.2. Acompanhamento contínuo do projeto (rótulo exploratório: “Guardian”)
+
+Possíveis comportamentos:
+
+- Monitorar marcos, dependências, prazos, evidências, recursos registrados e mudanças de escopo.
+- Identificar divergências entre tarefas declaradas como concluídas e resultados técnicos efetivamente demonstrados.
+- Investigar bloqueios, propor ou executar medidas autorizadas e acompanhar seu resultado.
+- Ajudar no encerramento e na preservação de conhecimento.
+
+A inspiração vem do **Guardião** discutido no desafio de RH da Tako. Trata-se de uma analogia de processo, não de uma arquitetura que deva ser copiada.
+
+### 4.3. Comprovação de entregas (rótulo exploratório: “Delivery Agent”)
+
+Possíveis comportamentos:
+
+- Interpretar compromissos técnicos e critérios de aceite.
+- Vincular cada exigência à versão correta de artefatos, ensaios e resultados.
+- Identificar evidências ausentes e encaminhar ações para obtê-las.
+- Preparar pacotes de entrega e acompanhar revisões, sem substituir o aceite formal.
+
+### 4.4. Rastreabilidade e prestação de contas (rótulo exploratório: “Governance & Evidence”)
+
+Necessidades funcionais discutidas:
+
+- Preservar histórico, autoria, fontes, versões, justificativas, ações e aprovações.
+- Reaproveitar evidências da execução técnica para gestão, relatórios e eventual prestação de contas.
+- Evitar que pessoas precisem preencher a mesma informação em sistemas diferentes.
+
+**Questão deixada em aberto para o Claude de Carlos:** qual organização interna implementa essas capacidades com menor complexidade, maior confiabilidade e melhor demonstração de valor? Os nomes anteriores podem ser mantidos, descartados ou reorganizados.
+
+## 5. Funcionamento detalhado por cenários
+
+### Cenário A — trabalho técnico realizado, evidência incompleta
+
+Um engenheiro executa um novo experimento, mas o registro disponível não explica qual hipótese estava sendo testada.
+
+1. O ResearchOps detecta a nova execução por evento ou consulta periódica.
+2. Busca parâmetros, resultados, artefatos e alterações técnicas relacionadas.
+3. Produz automaticamente a parte verificável do registro do experimento.
+4. Percebe que a justificativa metodológica não está em nenhuma fonte.
+5. Abre uma solicitação precisa ao responsável, com links e contexto.
+6. Recebe a resposta, registra a autoria, atualiza o documento e encerra a pendência.
+
+**Trabalho eliminado:** busca manual de métricas, cópia de informações, criação da estrutura documental e atualização de tarefas. A hipótese científica continua sendo fornecida ou confirmada pelo pesquisador.
+
+### Cenário B — prazo de entrega próximo e evidência insuficiente
+
+Uma entrega exige que um protótipo passe por determinados testes, mas o resultado registrado ainda não comprova o critério de aceite.
+
+1. O sistema detecta a proximidade do prazo e consulta os requisitos.
+2. Reúne os resultados e as versões dos artefatos.
+3. Identifica o teste ausente ou o resultado insuficiente.
+4. O sistema cria a pendência na ferramenta de tarefas, associa responsáveis conforme regras e organiza as evidências existentes.
+5. Se necessário, prepara um plano de recuperação ou mensagem sobre risco de prazo.
+6. Novos resultados disparam outra conferência, e o sistema atualiza o status da entrega.
+
+**Importante:** o agente não reduz metas nem modifica compromissos contratuais por conta própria. O responsável técnico confirma a evidência antes do aceite.
+
+### Cenário C — desvio de recursos e retrabalho
+
+O consumo de horas formalmente informado está acima do previsto para a etapa.
+
+1. O sistema compara os registros autorizados com o planejamento e a evolução das entregas.
+2. Investiga atividades repetidas, bloqueios e mudanças de escopo documentadas.
+3. Agrupa os indícios em um diagnóstico rastreável.
+4. Prepara tarefas de verificação e um plano de ação para o coordenador.
+5. Depois de decisões humanas, atualiza o planejamento e acompanha as providências.
+
+O sistema não infere horas reais a partir de commits nem cria registros financeiros fictícios.
+
+### Cenário D — encerramento do projeto
+
+Uma equipe finaliza um desenvolvimento, mas faltam arquivos em versões definitivas, documentação e confirmações.
+
+1. O sistema consulta os critérios de encerramento.
+2. Encontra código, protótipos, versões, ensaios, resultados e documentos.
+3. Organiza um pacote técnico e uma lista específica de lacunas.
+4. Cria e acompanha as tarefas para completar os itens ausentes.
+5. Quando tudo estiver pronto, prepara o registro de encerramento e a transferência de conhecimento.
+6. O responsável revisa e autoriza o fechamento.
+
+**Trabalho eliminado:** coleta repetitiva de documentos, conferência de versões, montagem de checklists e acompanhamento manual de pendências.
+
+## 6. Onde a IA realmente agrega valor
+
+- **Interpretação contextual:** entende requisitos, notas técnicas, justificativas e mensagens em formatos variados.
+- **Investigação entre fontes:** relaciona atividades, documentos, experimentos e decisões sem depender apenas de identificadores explícitos.
+- **Planejamento de ações:** escolhe o próximo passo diante de lacunas, conflitos ou mudanças no projeto.
+- **Comunicação adaptativa:** solicita a informação necessária, em vez de pedir um relatório inteiro ao pesquisador.
+- **Retomada:** acompanha a resposta e continua uma tarefa iniciada anteriormente.
+- **Produção fundamentada:** gera documentação e explicações com referências a evidências verificáveis.
+
+Comparações de valores, validação de métricas, permissões, idempotência, cálculos de recursos e restrições contratuais devem usar código determinístico. **IA não deve fabricar resultado técnico, inventar causalidade ou declarar conformidade sem comprovação.**
+
+## 7. Experiência do usuário e grau de autonomia
+
+Uma possibilidade discutida é que o ResearchOps trabalhe continuamente por eventos, verificações periódicas e comandos dos usuários. A escolha do mecanismo de execução cabe ao desenho técnico posterior.
+
+**Fluxo preferencial:** detectar → investigar → executar ações permitidas → registrar resultado → apresentar ao responsável apenas o que precisa de revisão, correção ou autorização.
+
+O usuário poderá:
+
+- aceitar o resultado;
+- corrigir uma interpretação ou evidência;
+- solicitar reexecução;
+- definir limites e preferências operacionais;
+- consultar as decisões e alterações que o sistema realizou.
+
+As correções atualizam o contexto e os artefatos afetados, com histórico de versões e possibilidade de reversão quando aplicável. O sistema deve oferecer controles para frequência de notificações, evitando transformar automação em vigilância ou burocracia.
+
+**Exemplo de classificação de operações por risco (sugestão para avaliação de arquitetura, não desenho aprovado):**
+
+1. **Autônoma:** leitura, comparação, preparação de rascunhos, criação de registros e tarefas dentro das permissões.
+2. **Supervisão posterior:** alterações reversíveis em documentos operacionais, notificadas e auditadas.
+3. **Aprovação anterior:** obrigações financeiras e contratuais, exclusões, publicação externa, alterações de permissões e declarações formais de conformidade ou aceite.
+
+## 8. Insumos técnicos e perguntas para a IA do Carlos — sem arquitetura prescrita
+
+Este relatório deve registrar **quais capacidades o produto precisa oferecer**, deixando **como implementá-las** para a análise do Claude de Carlos.
+
+### Ferramentas e informações consideradas nas discussões
+
+- GitHub ou GitLab: histórico de código, issues, revisões, versões e artefatos.
+- MLflow ou outras plataformas de experimentação: ensaios, parâmetros, métricas, resultados e registros de testes.
+- Ferramentas de tarefas e documentos: planejamento, responsáveis, requisitos, relatórios e decisões.
+- Informações financeiras ou contratuais, quando autorizadas: horas formalmente registradas, orçamento, compromissos e critérios de aceite.
+
+Essas são **fontes candidatas**, não integrações obrigatórias ou lista final de plataformas.
+
+### Necessidades técnicas identificadas
+
+- Contexto confiável dos projetos, tarefas, requisitos, experimentos, evidências e decisões.
+- Capacidade de executar ações em ferramentas externas, com confirmação do resultado e tratamento de falhas.
+- Continuidade de uma investigação após aguardar informações humanas ou novas evidências.
+- Rastreabilidade das fontes e das versões utilizadas.
+- Diferenciação entre interpretação por IA e checagens calculáveis por regras.
+- Limites de acesso, aprovação proporcional ao risco e proteção de dados empresariais.
+- Correção humana que altere efetivamente registros e conclusões dependentes, em vez de produzir feedback ignorado.
+
+### Decisões técnicas reservadas ao Claude de Carlos
+
+- Definir arquitetura, componentes, modelo de dados, divisão de responsabilidades e quantidade de agentes, se aplicável.
+- Selecionar ferramentas, bibliotecas, frameworks, mecanismos de estado e orquestração.
+- Escolher quais integrações entram no MVP.
+- Determinar a política operacional de autonomia, supervisão, reversão e auditoria.
+- Propor a estrutura da interface e as etapas de implementação.
+
+A equipe deverá revisar as propostas resultantes. **Não interpretar o vocabulário exploratório deste documento como especificação arquitetural.**
+
+## 9. Desenvolvimento e governança: perspectivas de uso, não módulos definidos
+
+| Perspectiva | Utilidade |
+| --- | --- |
+| Equipe técnica | Menos documentação repetitiva, resultados organizados, pendências específicas e histórico recuperável |
+| Coordenação | Visibilidade sobre riscos, entregas, requisitos e resolução de bloqueios |
+| Gestão | Acompanhamento de compromissos e recursos com evidências e ações registradas |
+| Prestação de contas | Documentos e rastreabilidade derivados da execução técnica, com modelos adaptáveis a requisitos específicos |
+
+A gestão documental pode ser adaptada, posteriormente, a obrigações de financiadores, contratos de P&D e incentivos à inovação. **Esses regimes possuem regras diferentes e não devem ser confundidos.** Decisões fiscais, contábeis e institucionais permanecem sob responsabilidade profissional.
+
+## 10. Público-alvo e modelo de negócio
+
+**Foco inicial:** pequenas e médias empresas de P&D que criam soluções tecnológicas, desenvolvem projetos simultâneos, lidam com entregas e dependem de equipes técnicas reduzidas para acompanhar a operação.
+
+**Usuários:** pesquisadores, desenvolvedores, engenheiros, líderes técnicos e coordenadores. **Comprador:** liderança técnica, gestão de projetos ou direção da empresa.
+
+**Benefício econômico:** trabalho documental e de coordenação reduzido, entregas melhor preparadas, menos retrabalho operacional e preservação de evidências técnicas.
+
+**Modelo:** assinatura B2B por equipe ou projetos ativos, com integrações adicionais ou implantação privada conforme o porte e as exigências de segurança.
+
+**Estratégia de diferenciação:** especialização na execução do ciclo de P&D e na resolução de pendências de entregas técnicas. O diferencial não pode ser apenas conectar tarefas e gerar resumos.
+
+## 11. Concorrência e posicionamento
+
+Atlassian Rovo, Jira e Notion oferecem gestão e automações generalistas. ReaDI-Watch, Boast, Neo.Tax e outras soluções especializadas organizam informações e evidências de P&D, com diferentes focos em governança ou incentivos. Ferramentas de pesquisa e experimentação também cobrem partes do processo técnico.
+
+O ResearchOps propõe um recorte específico: **atuar continuamente nos processos de P&D, ligando execução, evidências, marcos, decisões e entregas, com ações reais em ferramentas externas e supervisão dos usuários.**
+
+Essa posição exige demonstrar o fluxo end-to-end; não se sustenta apenas na quantidade de agentes ou na integração entre ferramentas.
+
+## 12. Possível demonstração no Converge — cenário sugerido, não escopo definido
+
+Uma opção discutida para demonstrar o conceito é acompanhar uma entrega técnica e resolver uma pendência documental ou experimental. Essa opção serve como **material de referência para o Claude de Carlos avaliar e substituir ou aprimorar**, não como definição do MVP.
+
+### Exemplo de fluxo demonstrável
+
+1. Receber a descrição de um projeto tecnológico, um prazo e critérios de entrega.
+2. Consultar um repositório de teste e registros de experimentos ou ensaios.
+3. Identificar uma exigência ainda não comprovada com as evidências encontradas.
+4. Investigar a origem do bloqueio, apresentando as fontes.
+5. Executar uma ação externa verificável, como criar uma pendência contextualizada.
+6. Receber uma correção ou informação adicional do responsável.
+7. Retomar a análise, atualizar os registros e demonstrar o resultado.
+8. Organizar um pacote técnico com o histórico e as evidências.
+
+### O que esse cenário pretende demonstrar
+
+- IA interpretando informações técnicas e escolhendo providências.
+- Trabalho real executado, em vez de apenas alerta, chat ou relatório.
+- Continuidade de um processo após intervenção humana.
+- Rastreabilidade do que ocorreu e controle sobre ações sensíveis.
+
+A escolha do MVP, da interface, das integrações, da arquitetura, das funcionalidades mínimas e dos cortes de escopo será preparada pelo **Claude de Carlos**, considerando o tempo do hackathon, a capacidade da equipe e as regras da competição. O cenário acima é uma sugestão conceitual, não um requisito de implementação.
+
+Não utilizar dados e artefatos privados sem permissão expressa. Distinguir integrações reais de dados de demonstração.
+
+## 13. Histórico de elaboração desta proposta
+
+1. **EvidenceOps:** foco inicial em reunir evidências e organizar documentação de P&D.
+2. **ResearchOps:** ampliação para atuar no desenvolvimento cotidiano, não apenas nos relatórios finais.
+3. **Duas perspectivas de uso:** desenvolvimento técnico e gestão/evidências. Os nomes P&D Operations e Governance & Evidence surgiram como maneira de explicá-las, não como módulos aprovados.
+4. **Nicho:** foco em pequenas e médias empresas que desenvolvem soluções tecnológicas, para evitar uma plataforma genérica de gestão.
+5. **Comprovação de entregas:** discutida sob o nome exploratório Delivery Agent, sem decisão de criar um agente separado.
+6. **Acompanhamento contínuo:** inspirado no Guardian do desafio de RH, sem decisão de implementar uma entidade ou serviço com esse nome.
+7. **Autonomia ampliada:** entendimento atual de que o ResearchOps deve operar o processo, enquanto o usuário supervisiona resultados, corrige interpretações e aprova ações de maior risco.
+
+As etapas representam a evolução conceitual da discussão, e não versões lançadas ou marcos de implementação.
+
+## 14. Encaminhamento para Claude de Carlos e decisões abertas
+
+**Papel deste documento:** transmitir o que foi discutido sobre o problema, o público, o comportamento esperado e os cenários de valor. Não prescrever a estrutura interna do ResearchOps.
+
+**Responsabilidade atribuída pelo grupo nesta etapa:** a IA do Carlos (Claude) definirá a proposta de **arquitetura e estrutura do produto**, utilizando este histórico como insumo, e apresentará sua organização para a equipe discutir e aprovar. O papel do ChatGPT é consolidar conhecimento, esclarecer requisitos e passar adiante as propostas discutidas, não tomar a decisão técnica pelo Claude.
+
+### Pontos para o Claude considerar
+
+- Como transformar a visão de atuação ao longo de todo o projeto em uma solução implementável, preservando foco no trabalho manual eliminado.
+- Quais responsabilidades exigem IA e quais podem ser processos determinísticos.
+- Como estabelecer supervisão humana eficiente: revisar e corrigir resultados, com autorizações adicionais para ações sensíveis.
+- Como aplicar correções recebidas dos usuários a evidências, documentos, decisões e processos em andamento.
+- Como manter continuidade operacional e evitar tarefas ou mensagens duplicadas.
+- Qual recorte do produto entregar primeiro para demonstrar um processo completo no hackathon.
+- Quais integrações e dados são suficientes para provar a execução real.
+- Como respeitar confidencialidade, autorização de acesso e rastreabilidade.
+
+Esses pontos são **perguntas e requisitos de negócio para análise**, não escolhas pré-aprovadas de infraestrutura, componentes, frameworks, quantidade de agentes ou nomenclatura.
+
+## 15. Síntese da visão
+
+**ResearchOps Agent é um operador inteligente do ciclo de vida de projetos de P&D tecnológico.** Ele observa o que acontece nas ferramentas da equipe, interpreta informações técnicas, organiza e executa tarefas operacionais, encontra problemas, coordena sua resolução e prepara entregas comprováveis. Pesquisadores continuam responsáveis pelo conhecimento e pelas decisões técnicas; gestores e responsáveis autorizam decisões sensíveis. A plataforma deve reduzir a necessidade de administrar manualmente informações que já existem, não criar novas obrigações de preenchimento.
+
+---
+
+**Contexto de arquivamento:** este registro é destinado ao histórico de propostas pesquisadas no Converge Challenge 2026. Não altera a seleção de proposta principal da equipe.
+
+## 16. Registro de transferência de conhecimento
+
+**Escopo deste material:** histórico da concepção do ResearchOps e visão de comportamento esperada. A documentação foi organizada para ser entregue ao Claude de Carlos como insumo para decisão de arquitetura e desenho do produto.
+
+**Decisões não tomadas por este relatório:** número e nomes dos agentes, separação entre módulos, arquitetura do backend, armazenamento, framework, componentes da interface, divisão de tarefas de desenvolvimento e escopo definitivo do MVP.
+
+**O que deve ser preservado ao propor a solução:** foco em PMEs de P&D que desenvolvem tecnologia; participação no ciclo inteiro do projeto; execução efetiva de trabalho operacional; redução da burocracia; supervisão humana para validar ou corrigir resultados; ações sensíveis sob aprovação adequada; rastreabilidade técnica; e interação com as ferramentas que a equipe já utiliza.
+
+**Nota de revisão:** a versão anterior tratava rótulos funcionais como uma estrutura de produto mais definida do que a equipe havia decidido. Nesta atualização, foram explicitamente reclassificados como propostas históricas para avaliação do Claude de Carlos.
