@@ -6,9 +6,10 @@ variável obrigatória faltar ou for inválida, ``load_settings`` levanta
 """
 
 from functools import lru_cache
+from typing import Literal
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, SecretStr, ValidationError
+from pydantic import AnyHttpUrl, Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,7 +18,7 @@ class ConfigError(RuntimeError):
 
 
 class Settings(BaseSettings):
-    """Variáveis de ambiente da aplicação. Todas são obrigatórias."""
+    """Variáveis de ambiente da aplicação. Obrigatórias, exceto as do Maker (com padrão)."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -34,6 +35,8 @@ class Settings(BaseSettings):
     checker_model: str
     github_token: SecretStr
     tenant_id: UUID
+    maker_model: str = Field(default="claude-opus-5-5", min_length=1)
+    maker_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
 
 
 def _describe_errors(error: ValidationError) -> str:
