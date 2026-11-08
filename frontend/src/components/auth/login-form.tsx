@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { ArrowRight, FlaskConical, LayoutDashboard, Scale, ShieldCheck } from "lucide-react";
+import { ArrowRight, FlaskConical, LayoutDashboard, Scale } from "lucide-react";
+import { LoginBackdrop, LoginHero } from "@/components/auth/login-hero";
 import { BashoLogo } from "@/components/brand/logo";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { DEMO_ACCOUNTS, ROLE_HOME, ROLE_LABELS, type AppRole } from "@/lib/auth/shared";
 
@@ -13,7 +13,7 @@ const ROLE_DESCRIPTION: Record<AppRole, string> = {
   fiscal: "Pacote fiscal, documentos e sinalizações. Sem edição dos relatórios técnicos ou configuração das fontes.",
 };
 const ICONS = { researcher: FlaskConical, manager: LayoutDashboard, fiscal: Scale };
-const FIELD = "mt-2 h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
+const FIELD = "mt-2 h-12 w-full rounded-xl border border-input bg-background/70 px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
 
 function useLoginForm() {
   const [email, setEmail] = useState("");
@@ -59,27 +59,6 @@ function useLoginForm() {
 
 type LoginState = ReturnType<typeof useLoginForm>;
 
-function LoginBrand() {
-  return (<section className="relative hidden flex-col justify-between overflow-hidden lg:flex bg-[#10243e] p-7 text-white sm:p-12 lg:p-16">
-        <BashoLogo />
-        <div className="relative my-14 max-w-lg space-y-6 lg:my-20">
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/20 px-3 py-1 text-xs text-blue-100">
-            <ShieldCheck className="size-3.5" aria-hidden /> Acesso à sua organização
-          </span>
-          <h1 className="font-serif text-4xl leading-tight font-semibold sm:text-5xl">O trabalho de pesquisa.<br />As evidências no mesmo lugar.</h1>
-          <p className="max-w-md text-base leading-relaxed text-blue-100/80">
-            Entre com sua conta e escolha a função autorizada. Cada pessoa tem um espaço para acompanhar, revisar e decidir.
-          </p>
-          <div className="flex flex-wrap gap-2 pt-3 text-xs text-blue-100">
-            {["GitHub", "Notion", "Google Drive"].map(name => (
-              <span key={name} className="rounded-lg border border-white/15 bg-white/5 px-3 py-2">{name}</span>
-            ))}
-          </div>
-        </div>
-        <p className="max-w-md text-xs leading-relaxed text-blue-100/60">Ambiente local com contas e dados fictícios. Notion e Drive têm prévias simuladas; não há conexão a contas externas neste login.</p>
-      </section>);
-}
-
 function LoginFields({ state }: { state: LoginState }) {
   const { email, setEmail, password, setPassword, role, setRole } = state;
   return <>
@@ -112,7 +91,7 @@ function DemoAccounts({ state, openAccess }: { state: LoginState; openAccess: bo
                 const Icon = ICONS[account.role];
                 return <button key={account.id} type="button" disabled={pending}
                   onClick={() => { if (openAccess) void quickLogin(account); else { setEmail(account.email); setRole(account.role); } }}
-                  className="flex items-center gap-3 rounded-lg border bg-card p-3 text-left outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/40">
+                  className="flex items-center gap-3 rounded-lg border bg-card/60 p-3 text-left outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/40">
                   <Icon className="size-4 text-primary" aria-hidden />
                   <span><span className="block font-medium">{account.name}</span><span className="text-xs text-muted-foreground">{account.email} · {ROLE_LABELS[account.role]}</span></span>
                 </button>;
@@ -130,17 +109,19 @@ export function LoginForm({ openAccess = false }: { openAccess?: boolean }) {
   const state = useLoginForm();
   const { role, message, pending, submit } = state;
   return (
-    <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
-      <LoginBrand />
-      <section className="flex flex-col bg-background p-6 sm:p-12 lg:px-16">
-        <div className="flex items-center justify-between lg:justify-end"><span className="lg:hidden"><BashoLogo /></span><ThemeToggle /></div>
-        <div className="m-auto w-full max-w-md py-10">
+    <div className="relative min-h-dvh">
+      <LoginBackdrop />
+      <div className="relative grid min-h-dvh lg:grid-cols-[1.1fr_1fr]">
+      <LoginHero />
+      <section className="relative flex flex-col items-center justify-center p-4 sm:p-8 lg:px-12">
+        <div className="dark w-full max-w-md rounded-3xl border border-white/12 bg-[#0b1226]/70 p-7 text-foreground shadow-[0_30px_80px_-20px_rgba(2,6,23,0.9)] backdrop-blur-2xl sm:p-9">
+          <BashoLogo className="mb-8 lg:hidden" />
           <p className="text-xs font-semibold tracking-widest text-primary uppercase">Bem-vindo ao Basho</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight">Entre na sua organização</h2>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Lumen Sensores · demonstração local</p>
           <form className="mt-8 space-y-5" onSubmit={submit}>
             <LoginFields state={state} />
-            {role && <p className="rounded-xl border bg-card p-3 text-sm leading-relaxed text-muted-foreground">{ROLE_DESCRIPTION[role]}</p>}
+            {role && <p className="rounded-xl border bg-card/60 p-3 text-sm leading-relaxed text-muted-foreground">{ROLE_DESCRIPTION[role]}</p>}
             {message && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{message}</p>}
             <Button type="submit" disabled={pending} className="h-12 w-full">
               {pending ? "Entrando…" : "Entrar no Basho"} <ArrowRight className="size-4" aria-hidden />
@@ -149,6 +130,7 @@ export function LoginForm({ openAccess = false }: { openAccess?: boolean }) {
           <DemoAccounts state={state} openAccess={openAccess} />
         </div>
       </section>
+      </div>
     </div>
   );
 }
