@@ -9,7 +9,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from basho.agent.artifacts import Periodicity, ReportingPeriod
 from basho.identity import HumanIdentity, HumanRole, current_human
@@ -17,7 +17,7 @@ from basho.reports.api import _scope
 from basho.reports.auto_draft import NothingToDraftError
 from basho.reports.consolidation import ManagerConsolidation, consolidate
 from basho.reports.narrative import render_manager_summary
-from basho.reports.schemas import ReportVersionOut
+from basho.reports.schemas import ReportReviewFlag, ReportVersionOut
 from basho.reports.service import ReportQueryService
 
 router = APIRouter(prefix="/projects", tags=["reports"])
@@ -47,6 +47,9 @@ class ConsolidationOut(BaseModel):
     model_config = ConfigDict(frozen=True)
     consolidation: ManagerConsolidation | None
     summary_markdown: str | None
+    needs_review: list[ReportReviewFlag] = Field(
+        default_factory=list, description="Relatórios afetados por correção de evidência (#11)"
+    )
 
 
 @router.get("/{project_id}/reports", response_model=list[ReportVersionOut])
@@ -84,13 +87,26 @@ async def auto_draft(
 async def get_consolidation(
     project_id: UUID, period: Period, request: Request, _: Human
 ) -> ConsolidationOut:
+    tenant_id = request.app.state.settings.tenant_id
     async with _scope(request) as session:
-        inputs = await ReportQueryService(session).project_inputs(
-            request.app.state.settings.tenant_id, project_id, period
-        )
+        query = ReportQueryService(session)
+        inputs = await query.project_inputs(tenant_id, project_id, period)
+        flags = await query.needs_review(tenant_id, project_id, period)
     if not inputs:
         return ConsolidationOut(consolidation=None, summary_markdown=None)
     consolidation = consolidate(inputs)
     return ConsolidationOut(
-        consolidation=consolidation, summary_markdown=render_manager_summary(consolidation)
+        consolidation=consolidation,
+        summary_markdown=render_manager_summary(consolidation),
+        needs_review=flags,
     )
+
+
+@router.get("/{project_id}/reports/needs-review", response_model=list[ReportReviewFlag])
+async def reports_needing_review(
+    project_id: UUID, period: Period, request: Request, _: Human
+) -> list[ReportReviewFlag]:
+    async with _scope(request) as session:
+        return await ReportQueryService(session).needs_review(
+            request.app.state.settings.tenant_id, project_id, period
+        )
