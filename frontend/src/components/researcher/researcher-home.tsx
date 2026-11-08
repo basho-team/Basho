@@ -19,11 +19,6 @@ export function ResearcherHome() {
   return (
     <div className="space-y-8">
       <PageHeader title="Meus relatórios" subtitle={context.data.project.name + " · " + context.data.period.label} />
-      <Link href="/integracoes" className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4 text-sm hover:bg-muted">
-        <span><span className="block font-medium">Fontes da organização</span>
-          <span className="text-muted-foreground">GitHub, Notion e Drive já conectados: veja o que o Basho leu para este projeto.</span></span>
-        <span className="font-medium text-primary">Ver →</span>
-      </Link>
       <Section title="Relatórios do período">
         {reports.isPending && <LoadingState />}
         {reports.isError && <ErrorState error={reports.error} onRetry={() => reports.refetch()} />}

@@ -1,5 +1,5 @@
 import { FlaskConical, FolderSync, House, LayoutDashboard, Plug, Scale, type LucideIcon } from "lucide-react";
-import type { AppRole } from "@/lib/auth/shared";
+import { mayVisit, type AppRole } from "@/lib/auth/shared";
 
 export interface NavItem {
   href: string;
@@ -17,6 +17,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/integracoes", label: "Integrações", icon: Plug },
   { href: "/gerente/publicacao", label: "Publicação", role: "manager", icon: FolderSync },
 ];
+
+/** Itens que a função enxerga: os dela e os comuns que `mayVisit` libera para ela. */
+export function itemsFor(role: AppRole): NavItem[] {
+  return NAV_ITEMS.filter(item => (item.role ? item.role === role : mayVisit(role, item.href)));
+}
 
 function matches(item: NavItem, pathname: string): boolean {
   if (item.exact) return pathname === item.href;

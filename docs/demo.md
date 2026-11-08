@@ -64,21 +64,6 @@ na Vercel antes; desligue em *Settings → Deployment Protection* para uma demo 
 > **Abra `http://localhost:<porta>` (não `127.0.0.1`).** O login confere a origem exata, e o Next
 > monta a URL da requisição com `localhost`; pelo `127.0.0.1` o login é recusado.
 
-## Roteiro da demo com o pesquisador "Equipe Basho" (funciona na Vercel)
-
-Conta nova para a apresentação: **Equipe Basho** (`equipe@lumen.example`, pesquisadora). É a "gente".
-
-1. Na tela de login, clique em **Equipe Basho** (com a entrada rápida ligada) ou entre com e-mail, senha e função *Pesquisador*.
-2. No menu, abra **Minhas fontes** (ou o atalho "Conecte suas fontes" na home).
-3. Clique em **Preencher com exemplos** e depois **Conectar tudo** (ou cole seus próprios links hipotéticos de GitHub, Drive e Notion; o formato é validado e links de outros sites são recusados).
-4. Clique em **Gerar e publicar relatório** e acompanhe os passos: ler o GitHub, o Maker escreve, o Checker confere, publica na pasta **BASHO** do Drive e na página **BASHO** do Notion.
-5. Mostre o resultado: a árvore `<sua pasta> / BASHO / Relatório BASHO — …`, o relatório com **fontes numeradas**, as **pendências para os responsáveis** (hipótese, desfecho dos experimentos, horas formais) e o quadro **"O que a plataforma não fez"**: um commit com instrução escondida ("ignore as regras…") foi tratado como dado, e um commit que cita "40h" não virou horas.
-
-> **O que é real e o que é simulado.** Em "Minhas fontes" (a versão da Vercel) é **tudo simulação** no navegador: os commits são fictícios
-> (gerados a partir do nome do repositório), nenhum serviço externo é acessado e nada é gravado fora do navegador. A cadeia real
-> (backend, fila, worker, Drive e Notion) existe e roda localmente com o `demo-up.ps1` na tela **Publicação** do gerente, contra um servidor
-> **falso** de Drive/Notion; contra Google e Notion reais ela **não foi testada**.
-
 ## O projeto da demo
 
 **Demo — Quantização de modelos de detecção de falhas**, com duas atividades:

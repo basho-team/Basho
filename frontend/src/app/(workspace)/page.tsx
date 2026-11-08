@@ -3,7 +3,7 @@
 import { ArrowRight, FlaskConical, LayoutDashboard, Scale } from "lucide-react";
 import Link from "next/link";
 import { useDemoUser } from "@/components/auth/session-provider";
-import { ROLE_HOME } from "@/lib/auth/shared";
+import { mayVisit, ROLE_HOME } from "@/lib/auth/shared";
 import { BashoMark } from "@/components/brand/logo";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -71,7 +71,9 @@ export default function Home() {
         ))}
       </section>
 
-      <Link href="/integracoes" className="inline-flex rounded-lg border bg-card px-4 py-3 text-sm font-medium text-primary hover:bg-muted">Ver fontes e integrações</Link>
+      {mayVisit(user.role, "/integracoes") && (
+        <Link href="/integracoes" className="inline-flex rounded-lg border bg-card px-4 py-3 text-sm font-medium text-primary hover:bg-muted">Ver fontes e integrações</Link>
+      )}
 
       <Card>
         <CardHeader>

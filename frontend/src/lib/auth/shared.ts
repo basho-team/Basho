@@ -52,5 +52,7 @@ export function mayVisit(role: AppRole, pathname: string): boolean {
   if (prefix === "pesquisador") return role === "researcher";
   if (prefix === "gerente") return role === "manager";
   if (prefix === "fiscal") return role === "fiscal";
-  return ["/", "/integracoes", "/acesso-negado"].includes(pathname);
+  // O pesquisador não vê fontes nem integrações: elas já vêm conectadas pela organização.
+  if (pathname === "/integracoes") return role !== "researcher";
+  return ["/", "/acesso-negado"].includes(pathname);
 }

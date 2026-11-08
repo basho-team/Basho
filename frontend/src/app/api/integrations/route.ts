@@ -4,9 +4,12 @@ import { IntegrationActionSchema } from "@/lib/integrations/shared";
 import { integrationAction, integrationOverview } from "@/lib/server/demo-integrations";
 import { DataSourceError } from "@/lib/data/source";
 
+const RESEARCHER_DENIED = "Fontes e integrações são geridas pela organização.";
+
 export async function GET(request: Request): Promise<Response> {
   const user = await userFromRequest(request);
   if (!user) return authError(401, "Entre para continuar.");
+  if (user.role === "researcher") return authError(403, RESEARCHER_DENIED);
   return Response.json(integrationOverview(user), { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -14,6 +17,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!sameOriginJson(request)) return authError(403, "Origem da solicitação recusada.");
   const user = await userFromRequest(request);
   if (!user) return authError(401, "Entre para continuar.");
+  if (user.role === "researcher") return authError(403, RESEARCHER_DENIED);
   const body = await boundedJson(request, 1024);
   if (body instanceof Response) return body;
   const parsed = IntegrationActionSchema.safeParse(body);
