@@ -4,7 +4,7 @@ import psycopg
 import pytest
 from sqlalchemy.engine import URL
 
-from db_support import run_alembic
+from db_support import run_alembic, run_alembic_raw
 
 pytestmark = pytest.mark.db
 
@@ -33,4 +33,25 @@ def test_migration_is_reversible(migration_db_url: URL) -> None:
     assert _scalar(migration_db_url, FUNCTION_EXISTS_SQL) is False
 
     run_alembic(migration_db_url, "upgrade", "head")
+    assert _scalar(migration_db_url, TABLE_EXISTS_SQL) is True
+
+
+def test_downgrade_is_refused_when_ledger_has_rows(migration_db_url: URL) -> None:
+    # Arrange
+    run_alembic(migration_db_url, "upgrade", "head")
+    dsn = migration_db_url.set(drivername="postgresql").render_as_string(hide_password=False)
+    with psycopg.connect(dsn) as connection:
+        connection.execute(
+            "INSERT INTO evidence_events (id, tenant_id, project_id, kind, source, actor, "
+            "payload, content_hash, hash_version) VALUES (gen_random_uuid(), gen_random_uuid(), "
+            "gen_random_uuid(), 'commit_observed', 'github', '{}'::jsonb, '{}'::jsonb, "
+            "repeat('0', 64), 1)"
+        )
+
+    # Act
+    result = run_alembic_raw(migration_db_url, "downgrade", "base")
+
+    # Assert
+    assert result.returncode != 0
+    assert "append-only" in result.stderr
     assert _scalar(migration_db_url, TABLE_EXISTS_SQL) is True

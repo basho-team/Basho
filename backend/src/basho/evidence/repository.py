@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import insert, select, tuple_
+from sqlalchemy import insert, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from basho.evidence.models import EvidenceEventRow
@@ -14,10 +14,16 @@ class EvidenceRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def current_tenant_setting(self) -> str | None:
+        """Valor de ``app.tenant_id`` na transação atual (None se ausente)."""
+        result = await self._session.execute(text("SELECT current_setting('app.tenant_id', true)"))
+        return result.scalar_one_or_none()
+
     async def insert(self, values: dict[str, Any]) -> EvidenceEventRow:
         """Insere e devolve a linha com ``created_at`` gerado pelo banco."""
         statement = insert(EvidenceEventRow).values(**values).returning(EvidenceEventRow)
-        result = await self._session.execute(statement)
+        async with self._session.begin_nested():  # savepoint: a transação externa sobrevive
+            result = await self._session.execute(statement)
         return result.scalar_one()
 
     async def get(self, tenant_id: UUID, event_id: UUID) -> EvidenceEventRow | None:

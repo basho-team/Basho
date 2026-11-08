@@ -14,7 +14,7 @@ from basho.evidence.contracts import (
     EventSource,
     NewEvidenceEvent,
 )
-from basho.evidence.domain.hashing import canonical_json, compute_content_hash
+from basho.evidence.domain.hashing import HASH_VERSION, canonical_json, compute_content_hash
 from evidence_factories import PROJECT_A, TENANT_A, make_event
 
 
@@ -90,3 +90,11 @@ def test_content_hash_changes_when_any_envelope_field_changes(field: str, value:
 
     # Act / Assert
     assert compute_content_hash(changed) != compute_content_hash(base)
+
+
+def test_content_hash_v1_regression_literal() -> None:
+    # Hash fixo do evento fixo: se mudar, o algoritmo mudou e HASH_VERSION deve subir.
+    assert HASH_VERSION == 1
+    assert compute_content_hash(make_event()) == (
+        "c0d85e01af329d5aa283433360237d30487266eb72e4d9d862478a7a7301e37c"
+    )

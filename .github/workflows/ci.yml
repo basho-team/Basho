@@ -32,6 +32,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      REQUIRE_DB_TESTS: "1" # testes de banco falham (não pulam) se o banco faltar
       # Credenciais descartáveis do service acima; os testes recriam o banco basho_test.
       TEST_DATABASE_URL: postgresql+psycopg://basho_ci:basho_ci_throwaway@localhost:5432/basho_ci
     defaults:

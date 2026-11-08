@@ -6,20 +6,9 @@ from typing import Any
 
 from basho.evidence.contracts import NewEvidenceEvent
 
-# Campos do envelope cobertos pelo hash. `id` e `created_at` ficam de fora.
-HASHED_FIELDS: frozenset[str] = frozenset(
-    {
-        "tenant_id",
-        "project_id",
-        "kind",
-        "source",
-        "source_ref",
-        "actor",
-        "payload",
-        "supersedes",
-        "is_synthetic",
-    }
-)
+# Versão do algoritmo de hash. Mude ao alterar o envelope ou a canonicalização;
+# a coluna `hash_version` permite recalcular/verificar linhas antigas.
+HASH_VERSION = 1
 
 
 def canonical_json(obj: Any) -> bytes:
@@ -31,9 +20,22 @@ def canonical_json(obj: Any) -> bytes:
 
 
 def hashed_envelope(event: NewEvidenceEvent) -> dict[str, Any]:
-    """Envelope de conteúdo imutável que o hash cobre."""
-    dumped = event.model_dump(mode="json")
-    return {name: dumped[name] for name in HASHED_FIELDS}
+    """Envelope de conteúdo imutável (v1), montado campo a campo e de forma explícita."""
+    return {
+        "tenant_id": str(event.tenant_id),
+        "project_id": str(event.project_id),
+        "kind": event.kind.value,
+        "source": event.source.value,
+        "source_ref": event.source_ref,
+        "actor": {
+            "type": event.actor.type.value,
+            "id": event.actor.id,
+            "model": event.actor.model,
+        },
+        "payload": event.payload,
+        "supersedes": None if event.supersedes is None else str(event.supersedes),
+        "is_synthetic": event.is_synthetic,
+    }
 
 
 def compute_content_hash(event: NewEvidenceEvent) -> str:

@@ -7,6 +7,7 @@ Create Date: 2026-11-07
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0001"
@@ -48,15 +49,18 @@ def upgrade() -> None:
             actor         jsonb       NOT NULL,
             payload       jsonb       NOT NULL,
             content_hash  char(64)    NOT NULL,
+            hash_version  smallint    NOT NULL,
             supersedes    uuid,
             is_synthetic  boolean     NOT NULL DEFAULT false,
             created_at    timestamptz NOT NULL DEFAULT now(),
             CONSTRAINT ck_evidence_events_kind CHECK (kind IN ({_in_list(_KINDS)})),
             CONSTRAINT ck_evidence_events_source CHECK (source IN ({_in_list(_SOURCES)})),
             CONSTRAINT ck_evidence_events_content_hash CHECK (content_hash ~ '^[0-9a-f]{{64}}$'),
-            CONSTRAINT uq_evidence_events_tenant_id UNIQUE (tenant_id, id),
-            CONSTRAINT fk_evidence_events_supersedes_same_tenant
-                FOREIGN KEY (tenant_id, supersedes) REFERENCES evidence_events (tenant_id, id)
+            CONSTRAINT uq_evidence_events_tenant_project_id UNIQUE (tenant_id, project_id, id),
+            -- supersedes só aponta para evento do mesmo tenant E do mesmo projeto
+            CONSTRAINT fk_evidence_events_supersedes_same_project
+                FOREIGN KEY (tenant_id, project_id, supersedes)
+                REFERENCES evidence_events (tenant_id, project_id, id)
         )
         """
     )
@@ -94,6 +98,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    has_rows = op.get_bind().execute(sa.text("SELECT EXISTS (SELECT 1 FROM evidence_events)"))
+    if has_rows.scalar_one():
+        message = (
+            "downgrade recusado: evidence_events contém linhas e o ledger é append-only; "
+            "o downgrade destruiria evidências."
+        )
+        raise RuntimeError(message)
     op.execute("DROP TRIGGER trg_evidence_events_no_truncate ON evidence_events")
     op.execute("DROP TRIGGER trg_evidence_events_append_only ON evidence_events")
     op.execute("DROP FUNCTION evidence_events_reject_mutation()")

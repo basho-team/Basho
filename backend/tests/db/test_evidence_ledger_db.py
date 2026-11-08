@@ -14,8 +14,9 @@ from basho.evidence import (
     EvidenceService,
     EvidenceValidationError,
 )
-from basho.evidence.contracts import EventKind, EventSource
-from basho.evidence.domain.hashing import compute_content_hash
+from basho.evidence.contracts import Actor, ActorType, EventKind, EventSource
+from basho.evidence.domain.hashing import HASH_VERSION, compute_content_hash
+from basho.evidence.repository import EvidenceRepository
 from evidence_factories import fresh_ids, make_event
 
 pytestmark = pytest.mark.db
@@ -90,6 +91,7 @@ async def test_correction_appends_new_event_and_leaves_original_untouched(
                 project_id=project_id,
                 kind=EventKind.USER_CORRECTION,
                 source=EventSource.USER,
+                actor=Actor(type=ActorType.USER, id="u1"),
                 supersedes=original.id,
                 payload={"corrected": True},
             )
@@ -150,10 +152,10 @@ async def test_cross_tenant_supersedes_is_rejected_by_database_foreign_key(
     # Act / Assert: SQL cru, contornando o serviço
     insert_sql = text(
         "INSERT INTO evidence_events (id, tenant_id, project_id, kind, source, actor, payload, "
-        "content_hash, supersedes) VALUES (:id, :t, :p, 'commit_observed', 'github', "
-        "'{}'::jsonb, '{}'::jsonb, :h, :s)"
+        "content_hash, hash_version, supersedes) VALUES (:id, :t, :p, 'commit_observed', "
+        "'github', '{}'::jsonb, '{}'::jsonb, :h, 1, :s)"
     )
-    with pytest.raises(IntegrityError, match="fk_evidence_events_supersedes_same_tenant"):
+    with pytest.raises(IntegrityError, match="fk_evidence_events_supersedes_same_project"):
         async with tenant_session(session_factory, tenant_b) as session:
             await session.execute(
                 insert_sql,
@@ -255,3 +257,114 @@ async def test_tenant_session_sets_tenant_setting_for_the_transaction(
         ).scalar_one()
 
     assert value == str(tenant_id)
+
+
+async def test_session_of_tenant_a_cannot_use_service_for_tenant_b(
+    session_factory: Factory,
+) -> None:
+    # Arrange
+    tenant_a, project_a = fresh_ids()
+    tenant_b, project_b = fresh_ids()
+    async with tenant_session(session_factory, tenant_b) as session:
+        foreign = await EvidenceService(session).append(
+            make_event(tenant_id=tenant_b, project_id=project_b)
+        )
+
+    # Act / Assert
+    async with tenant_session(session_factory, tenant_a) as session:
+        service = EvidenceService(session)
+        with pytest.raises(EvidenceValidationError, match="tenant da sessão"):
+            await service.get(tenant_b, foreign.id)
+        with pytest.raises(EvidenceValidationError, match="tenant da sessão"):
+            await service.query(tenant_b)
+        with pytest.raises(EvidenceValidationError, match="tenant da sessão"):
+            await service.append(make_event(tenant_id=tenant_b, project_id=project_b))
+    assert project_a != project_b
+
+
+async def test_session_without_tenant_setting_is_rejected(session_factory: Factory) -> None:
+    tenant_id, project_id = fresh_ids()
+    async with session_factory() as session, session.begin():
+        service = EvidenceService(session)
+        with pytest.raises(EvidenceValidationError, match="tenant da sessão"):
+            await service.append(make_event(tenant_id=tenant_id, project_id=project_id))
+
+
+async def test_append_stores_hash_version(session_factory: Factory) -> None:
+    tenant_id, project_id = fresh_ids()
+    async with tenant_session(session_factory, tenant_id) as session:
+        saved = await EvidenceService(session).append(
+            make_event(tenant_id=tenant_id, project_id=project_id)
+        )
+        version = (
+            await session.execute(
+                text("SELECT hash_version FROM evidence_events WHERE id = :i"), {"i": saved.id}
+            )
+        ).scalar_one()
+
+    assert version == HASH_VERSION
+
+
+async def test_supersedes_across_projects_of_same_tenant_is_rejected_by_database_foreign_key(
+    session_factory: Factory,
+) -> None:
+    # Arrange
+    tenant_id, project_a = fresh_ids()
+    project_b = uuid4()
+    async with tenant_session(session_factory, tenant_id) as session:
+        original = await EvidenceService(session).append(
+            make_event(tenant_id=tenant_id, project_id=project_a)
+        )
+
+    # Act / Assert: SQL cru, contornando o serviço
+    insert_sql = text(
+        "INSERT INTO evidence_events (id, tenant_id, project_id, kind, source, actor, payload, "
+        "content_hash, hash_version, supersedes) VALUES (:id, :t, :p, 'commit_observed', "
+        "'github', '{}'::jsonb, '{}'::jsonb, :h, 1, :s)"
+    )
+    with pytest.raises(IntegrityError, match="fk_evidence_events_supersedes_same_project"):
+        async with tenant_session(session_factory, tenant_id) as session:
+            await session.execute(
+                insert_sql,
+                {"id": uuid4(), "t": tenant_id, "p": project_b, "h": "0" * 64, "s": original.id},
+            )
+
+
+async def test_query_with_empty_kinds_returns_nothing(session_factory: Factory) -> None:
+    tenant_id, project_id = fresh_ids()
+    async with tenant_session(session_factory, tenant_id) as session:
+        service = EvidenceService(session)
+        await service.append(make_event(tenant_id=tenant_id, project_id=project_id))
+
+        assert await service.query(tenant_id, kinds=[]) == []
+        assert len(await service.query(tenant_id, kinds=None)) == 1
+
+
+async def test_nul_character_is_rejected_before_reaching_database(
+    session_factory: Factory,
+) -> None:
+    tenant_id, project_id = fresh_ids()
+    async with tenant_session(session_factory, tenant_id) as session:
+        with pytest.raises(EvidenceValidationError, match=r"U\+0000"):
+            await EvidenceService(session).append(
+                make_event(tenant_id=tenant_id, project_id=project_id, payload={"k": "a\x00b"})
+            )
+
+
+async def test_integrity_error_on_insert_becomes_generic_validation_error(
+    session_factory: Factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange: simula violação de restrição no insert (ex.: corrida)
+    async def failing_insert(*args: object, **kwargs: object) -> None:
+        raise IntegrityError("INSERT secret-detail", {}, Exception("secret-detail"))
+
+    monkeypatch.setattr(EvidenceRepository, "insert", failing_insert)
+    tenant_id, project_id = fresh_ids()
+
+    # Act / Assert
+    async with tenant_session(session_factory, tenant_id) as session:
+        with pytest.raises(EvidenceValidationError) as raised:
+            await EvidenceService(session).append(
+                make_event(tenant_id=tenant_id, project_id=project_id)
+            )
+    assert "secret-detail" not in str(raised.value)

@@ -10,12 +10,14 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from basho.evidence.contracts import EventKind, EvidenceEvent, NewEvidenceEvent
-from basho.evidence.domain.hashing import compute_content_hash
+from basho.evidence.domain.hashing import HASH_VERSION, compute_content_hash
 from basho.evidence.domain.rules import (
     EvidenceNotFoundError,
+    EvidenceValidationError,
     validate_event_shape,
     validate_supersedes_target,
 )
@@ -46,29 +48,47 @@ def _to_event(row: EvidenceEventRow) -> EvidenceEvent:
 
 
 def _insert_values(event: NewEvidenceEvent) -> dict[str, Any]:
-    """Colunas da linha: conteúdo do evento (JSON-safe) mais id e hash do serviço."""
-    values = event.model_dump(mode="json")
-    values["tenant_id"] = event.tenant_id
-    values["project_id"] = event.project_id
-    values["supersedes"] = event.supersedes
-    values["id"] = uuid4()
-    values["content_hash"] = compute_content_hash(event)
-    return values
+    """Colunas da linha: conteúdo do evento mais id, hash e versão do hash do serviço."""
+    return {
+        "id": uuid4(),
+        "tenant_id": event.tenant_id,
+        "project_id": event.project_id,
+        "kind": event.kind.value,
+        "source": event.source.value,
+        "source_ref": event.source_ref,
+        "actor": event.actor.model_dump(mode="json"),
+        "payload": event.payload,
+        "supersedes": event.supersedes,
+        "is_synthetic": event.is_synthetic,
+        "content_hash": compute_content_hash(event),
+        "hash_version": HASH_VERSION,
+    }
 
 
 class EvidenceService:
     def __init__(self, session: AsyncSession) -> None:
         self._repository = EvidenceRepository(session)
 
+    async def _require_session_tenant(self, tenant_id: UUID) -> None:
+        """A sessão deve ter sido aberta para o mesmo tenant (``tenant_session``)."""
+        if await self._repository.current_tenant_setting() != str(tenant_id):
+            raise EvidenceValidationError("tenant da sessão ausente ou diferente do informado")
+
     async def append(self, event: NewEvidenceEvent) -> EvidenceEvent:
         """Valida, calcula id/hash e grava um novo evento."""
+        await self._require_session_tenant(event.tenant_id)
         validate_event_shape(event)
         if event.supersedes is not None:
             target_project = await self._repository.project_of(event.tenant_id, event.supersedes)
             validate_supersedes_target(event, target_project)
-        return _to_event(await self._repository.insert(_insert_values(event)))
+        try:
+            row = await self._repository.insert(_insert_values(event))
+        except IntegrityError:
+            raise EvidenceValidationError("evento viola uma restrição de integridade") from None
+        return _to_event(row)
 
     async def get(self, tenant_id: UUID, event_id: UUID) -> EvidenceEvent:
+        await self._require_session_tenant(tenant_id)
         row = await self._repository.get(tenant_id, event_id)
         if row is None:
             raise EvidenceNotFoundError("evento não encontrado neste tenant")
@@ -88,6 +108,9 @@ class EvidenceService:
         ``before`` é o cursor ``(created_at, id)`` do último item da página anterior.
         ``limit`` é limitado a ``MAX_PAGE_SIZE``.
         """
+        await self._require_session_tenant(tenant_id)
+        if kinds is not None and len(kinds) == 0:
+            return []
         bounded = max(1, min(limit, MAX_PAGE_SIZE))
         rows = await self._repository.query(
             tenant_id,

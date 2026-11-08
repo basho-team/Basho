@@ -4,7 +4,16 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import CHAR, Boolean, DateTime, ForeignKeyConstraint, Text, UniqueConstraint, func
+from sqlalchemy import (
+    CHAR,
+    Boolean,
+    DateTime,
+    ForeignKeyConstraint,
+    SmallInteger,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -19,11 +28,13 @@ class Base(DeclarativeBase):
 class EvidenceEventRow(Base):
     __tablename__ = "evidence_events"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "id", name="uq_evidence_events_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "project_id", "id", name="uq_evidence_events_tenant_project_id"
+        ),
         ForeignKeyConstraint(
-            ["tenant_id", "supersedes"],
-            ["evidence_events.tenant_id", "evidence_events.id"],
-            name="fk_evidence_events_supersedes_same_tenant",
+            ["tenant_id", "project_id", "supersedes"],
+            ["evidence_events.tenant_id", "evidence_events.project_id", "evidence_events.id"],
+            name="fk_evidence_events_supersedes_same_project",
         ),
     )
 
@@ -36,6 +47,7 @@ class EvidenceEventRow(Base):
     actor: Mapped[dict[str, Any]] = mapped_column(JSONB)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
     content_hash: Mapped[str] = mapped_column(CHAR(SHA256_HEX_LENGTH))
+    hash_version: Mapped[int] = mapped_column(SmallInteger)
     supersedes: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
