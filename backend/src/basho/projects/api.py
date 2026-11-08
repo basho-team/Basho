@@ -50,6 +50,8 @@ CONFLICT_DETAILS = {
 _CONFLICT: dict[int | str, dict[str, Any]] = {status.HTTP_409_CONFLICT: {"model": ConflictOut}}
 
 Human = Annotated[HumanIdentity, Depends(current_human)]
+# Leitura também exige a identidade do BFF: dados de projeto não são públicos (#5, MEDIUM 3).
+_READ_AUTH = [Depends(current_human)]
 
 
 @asynccontextmanager
@@ -85,13 +87,15 @@ def _tenant(request: Request) -> UUID:
     return tenant_id
 
 
-@router.get("/projects/{project_id}", response_model=ProjectOut)
+@router.get("/projects/{project_id}", response_model=ProjectOut, dependencies=_READ_AUTH)
 async def get_project(project_id: UUID, request: Request) -> ProjectOut:
     async with _service(request) as service:
         return await service.get_project(_tenant(request), project_id)
 
 
-@router.get("/projects/{project_id}/pending", response_model=PendingPageOut)
+@router.get(
+    "/projects/{project_id}/pending", response_model=PendingPageOut, dependencies=_READ_AUTH
+)
 async def list_pending(
     project_id: UUID,
     request: Request,
@@ -105,7 +109,7 @@ async def list_pending(
         )
 
 
-@router.get("/projects/{project_id}/dossier", response_model=DossierOut)
+@router.get("/projects/{project_id}/dossier", response_model=DossierOut, dependencies=_READ_AUTH)
 async def get_dossier(project_id: UUID, request: Request) -> DossierOut:
     async with _service(request) as service:
         return await service.dossier(_tenant(request), project_id)

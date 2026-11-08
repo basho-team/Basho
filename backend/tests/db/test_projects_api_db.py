@@ -88,7 +88,9 @@ def seed(app: FastAPI, tenant_id: UUID) -> Seed:
 
 
 async def _pending(client: AsyncClient, project_id: UUID, **params: Any) -> list[dict[str, Any]]:
-    response = await client.get(f"/api/v1/projects/{project_id}/pending", params=params)
+    response = await client.get(
+        f"/api/v1/projects/{project_id}/pending", params=params, headers=RESEARCHER
+    )
     assert response.status_code == 200
     items: list[dict[str, Any]] = response.json()["items"]
     return items
@@ -112,7 +114,7 @@ async def test_get_project_returns_activities_and_open_pending(
     project_id, _ = await seed("needs_human", with_missing=True)
 
     # Act
-    response = await client.get(f"/api/v1/projects/{project_id}")
+    response = await client.get(f"/api/v1/projects/{project_id}", headers=RESEARCHER)
 
     # Assert
     assert response.status_code == 200
@@ -124,7 +126,7 @@ async def test_get_project_returns_activities_and_open_pending(
 
 async def test_unknown_project_returns_404(client: AsyncClient) -> None:
     for path in ("", "/pending", "/dossier"):
-        response = await client.get(f"/api/v1/projects/{uuid4()}{path}")
+        response = await client.get(f"/api/v1/projects/{uuid4()}{path}", headers=RESEARCHER)
         assert response.status_code == 404
 
 
@@ -173,10 +175,14 @@ async def test_pending_is_paginated(client: AsyncClient, seed: Seed) -> None:
 
     # Act
     response = await client.get(
-        f"/api/v1/projects/{project_id}/pending", params={"limit": 2, "offset": 0}
+        f"/api/v1/projects/{project_id}/pending",
+        params={"limit": 2, "offset": 0},
+        headers=RESEARCHER,
     )
     rest = await client.get(
-        f"/api/v1/projects/{project_id}/pending", params={"limit": 2, "offset": 2}
+        f"/api/v1/projects/{project_id}/pending",
+        params={"limit": 2, "offset": 2},
+        headers=RESEARCHER,
     )
 
     # Assert
@@ -437,6 +443,9 @@ async def test_human_actions_require_the_bff_secret(client: AsyncClient, seed: S
     assert anonymous.status_code == 401
 
 
+READ_PATHS = ("", "/pending", "/dossier")
+
+
 async def test_human_actions_are_closed_without_configured_secret(api_url: URL) -> None:
     app = create_app_for(api_url, uuid4(), secret=None)
 
@@ -447,8 +456,34 @@ async def test_human_actions_are_closed_without_configured_secret(api_url: URL) 
         response = await http.post(
             f"/api/v1/artifacts/{uuid4()}/approval", json={"decision": "approve"}, headers=MANAGER
         )
+        reads = [
+            await http.get(f"/api/v1/projects/{uuid4()}{path}", headers=MANAGER)
+            for path in READ_PATHS
+        ]
 
     assert response.status_code == 503
+    assert [read.status_code for read in reads] == [503] * len(READ_PATHS)
+
+
+async def test_project_reads_require_identity(client: AsyncClient, seed: Seed) -> None:
+    # Arrange
+    project_id, _ = await seed("verified")
+    forged = {**RESEARCHER, "X-Basho-Identity-Secret": "wrong"}
+
+    # Act
+    anonymous = [await client.get(f"/api/v1/projects/{project_id}{p}") for p in READ_PATHS]
+    wrong = [
+        await client.get(f"/api/v1/projects/{project_id}{p}", headers=forged) for p in READ_PATHS
+    ]
+    allowed = [
+        await client.get(f"/api/v1/projects/{project_id}{p}", headers=RESEARCHER)
+        for p in READ_PATHS
+    ]
+
+    # Assert
+    assert [r.status_code for r in anonymous] == [401] * len(READ_PATHS)
+    assert [r.status_code for r in wrong] == [401] * len(READ_PATHS)
+    assert [r.status_code for r in allowed] == [200] * len(READ_PATHS)
 
 
 async def test_unknown_artifact_returns_404(client: AsyncClient) -> None:
@@ -474,7 +509,7 @@ async def test_dossier_has_sources_verdicts_history_and_decision(
     )
 
     # Act
-    response = await client.get(f"/api/v1/projects/{project_id}/dossier")
+    response = await client.get(f"/api/v1/projects/{project_id}/dossier", headers=RESEARCHER)
 
     # Assert
     assert response.status_code == 200
@@ -506,7 +541,7 @@ async def test_project_of_another_tenant_is_invisible(
         seeded = await seed_artifact(session, other, project_id, status="verified")
 
     # Act
-    project = await client.get(f"/api/v1/projects/{project_id}")
+    project = await client.get(f"/api/v1/projects/{project_id}", headers=RESEARCHER)
     approval = await client.post(
         f"/api/v1/artifacts/{seeded.artifact.id}/approval",
         json={"decision": "approve"},

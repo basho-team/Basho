@@ -23,3 +23,21 @@ def test_openapi_has_project_routes_and_conflict_schema(valid_env: dict[str, str
     assert {"ProjectOut", "PendingPageOut", "DossierOut", "ConflictOut"} <= set(
         schema["components"]["schemas"]
     )
+
+
+READ_ROUTES = (
+    "/api/v1/projects/{project_id}",
+    "/api/v1/projects/{project_id}/pending",
+    "/api/v1/projects/{project_id}/dossier",
+    "/api/v1/reports/{report_version_id}",
+)
+
+
+def test_openapi_reads_declare_identity_headers(valid_env: dict[str, str]) -> None:
+    # Act
+    schema = create_app().openapi()
+
+    # Assert: o BFF manda os mesmos headers X-Basho-* nas leituras
+    for path in READ_ROUTES:
+        names = {param["name"] for param in schema["paths"][path]["get"]["parameters"]}
+        assert {"X-Basho-User-Id", "X-Basho-Role", "X-Basho-Identity-Secret"} <= names, path

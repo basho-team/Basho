@@ -96,7 +96,7 @@ async def test_get_report_returns_version_and_status(client: AsyncClient, seed: 
     v1 = await seed()
 
     # Act
-    response = await client.get(f"/api/v1/reports/{v1.version.id}")
+    response = await client.get(f"/api/v1/reports/{v1.version.id}", headers=RESEARCHER_HEADERS)
 
     # Assert
     assert response.status_code == 200
@@ -107,7 +107,7 @@ async def test_get_report_returns_version_and_status(client: AsyncClient, seed: 
 
 
 async def test_get_unknown_report_returns_404(client: AsyncClient) -> None:
-    response = await client.get(f"/api/v1/reports/{uuid4()}")
+    response = await client.get(f"/api/v1/reports/{uuid4()}", headers=RESEARCHER_HEADERS)
 
     assert response.status_code == 404
 
@@ -126,7 +126,9 @@ async def test_review_current_version_returns_201(client: AsyncClient, seed: See
     # Assert
     assert response.status_code == 201
     assert response.json()["review"]["version_id"] == str(v1.version.id)
-    status = (await client.get(f"/api/v1/reports/{v1.version.id}")).json()["status"]
+    status = (
+        await client.get(f"/api/v1/reports/{v1.version.id}", headers=RESEARCHER_HEADERS)
+    ).json()["status"]
     assert status["researcher"]["state"] == "text_approved"
 
 
@@ -154,8 +156,26 @@ async def test_review_of_old_version_returns_409_with_current_id(
     assert response.status_code == 409
     assert response.json()["requested_version_id"] == str(v1.version.id)
     assert response.json()["current_version_id"] == v2_id
-    v2_status = (await client.get(f"/api/v1/reports/{v2_id}")).json()["status"]
+    v2_status = (await client.get(f"/api/v1/reports/{v2_id}", headers=RESEARCHER_HEADERS)).json()[
+        "status"
+    ]
     assert v2_status["researcher"]["state"] == "awaiting_review"
+
+
+async def test_get_report_requires_identity(client: AsyncClient, seed: Seed) -> None:
+    # Arrange
+    v1 = await seed()
+    url = f"/api/v1/reports/{v1.version.id}"
+
+    # Act
+    anonymous = await client.get(url)
+    forged = await client.get(url, headers={**RESEARCHER_HEADERS, "X-Basho-Identity-Secret": "x"})
+    allowed = await client.get(url, headers=RESEARCHER_HEADERS)
+
+    # Assert
+    assert anonymous.status_code == 401
+    assert forged.status_code == 401
+    assert allowed.status_code == 200
 
 
 async def test_review_without_identity_or_wrong_secret_is_401(
@@ -205,7 +225,9 @@ async def test_correction_with_unknown_item_returns_422(client: AsyncClient, see
 
     # Assert
     assert response.status_code == 422
-    assert (await client.get(f"/api/v1/reports/{v1.version.id}")).json()["is_current"] is True
+    assert (
+        await client.get(f"/api/v1/reports/{v1.version.id}", headers=RESEARCHER_HEADERS)
+    ).json()["is_current"] is True
 
 
 async def test_correction_with_approval_is_rejected_at_the_edge(
@@ -237,9 +259,11 @@ async def test_review_is_closed_when_identity_secret_is_not_configured(
         response = await http.post(
             f"/api/v1/reports/{uuid4()}/review", json={"decision": "text_approved"}, headers=headers
         )
+        read = await http.get(f"/api/v1/reports/{uuid4()}", headers=headers)
 
     # Assert
     assert response.status_code == 503
+    assert read.status_code == 503
 
 
 async def test_review_event_records_unverified_identity(

@@ -26,7 +26,12 @@ def _scope(request: Request) -> AbstractAsyncContextManager[AsyncSession]:
     return tenant_session(request.app.state.session_factory, request.app.state.settings.tenant_id)
 
 
-@router.get("/{report_version_id}", response_model=ReportVersionOut)
+# Leitura também exige a identidade do BFF (mesmo segredo da revisão).
+@router.get(
+    "/{report_version_id}",
+    response_model=ReportVersionOut,
+    dependencies=[Depends(current_human)],
+)
 async def get_report_version(report_version_id: UUID, request: Request) -> ReportVersionOut:
     tenant_id = request.app.state.settings.tenant_id
     try:
