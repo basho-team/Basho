@@ -21,6 +21,7 @@ export const DEMO_ACCOUNTS = [
   { id: "bruno", personId: "p-bruno", email: "bruno@lumen.example", name: "Bruno Costa", role: "researcher" },
   { id: "marina", personId: "p-marina", email: "marina@lumen.example", name: "Marina Duarte", role: "manager" },
   { id: "rafael", personId: "p-rafael", email: "rafael@lumen.example", name: "Rafael Lima", role: "fiscal" },
+  { id: "equipe", personId: "p-equipe", email: "equipe@lumen.example", name: "Equipe Basho", role: "researcher" },
 ] as const;
 
 export interface DemoUser {

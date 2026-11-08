@@ -1,4 +1,4 @@
-import { FlaskConical, FolderSync, House, LayoutDashboard, Plug, Scale, type LucideIcon } from "lucide-react";
+import { FlaskConical, FolderSync, Link2, House, LayoutDashboard, Plug, Scale, type LucideIcon } from "lucide-react";
 import type { AppRole } from "@/lib/auth/shared";
 
 export interface NavItem {
@@ -12,6 +12,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/", label: "Meu espaço", icon: House, exact: true },
   { href: "/pesquisador", label: "Meus relatórios", role: "researcher", icon: FlaskConical },
+  { href: "/pesquisador/fontes", label: "Minhas fontes", role: "researcher", icon: Link2 },
   { href: "/gerente", label: "Gestão do projeto", role: "manager", icon: LayoutDashboard },
   { href: "/fiscal", label: "Análise fiscal", role: "fiscal", icon: Scale },
   { href: "/integracoes", label: "Integrações", icon: Plug },
