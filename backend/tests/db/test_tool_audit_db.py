@@ -124,7 +124,9 @@ async def test_audit_refuses_session_of_another_tenant(session_factory: Factory)
         "DELETE FROM tool_approval_decisions WHERE tenant_id = :t",
     ],
 )
-async def test_mutations_are_rejected_by_trigger(session_factory: Factory, statement: str) -> None:
+async def test_mutations_are_rejected_by_privilege_and_trigger(
+    session_factory: Factory, owner_session_factory: Factory, statement: str
+) -> None:
     # Arrange
     tenant_id = uuid4()
     async with tenant_session(session_factory, tenant_id) as session:
@@ -133,9 +135,13 @@ async def test_mutations_are_rejected_by_trigger(session_factory: Factory, state
         request = await store.create(_request(tenant_id))
         await store.decide(tenant_id, request.id, ApprovalDecision.REJECTED, uuid4())
 
-    # Act / Assert
-    with pytest.raises(DBAPIError, match=APPEND_ONLY):
+    # Act / Assert: o role da app não tem o privilégio (#21) ...
+    with pytest.raises(DBAPIError, match="permission denied"):
         async with tenant_session(session_factory, tenant_id) as session:
+            await session.execute(text(statement), {"t": tenant_id})
+    # ... e nem o dono do schema passa pelo trigger append-only.
+    with pytest.raises(DBAPIError, match=APPEND_ONLY):
+        async with tenant_session(owner_session_factory, tenant_id) as session:
             await session.execute(text(statement), {"t": tenant_id})
 
 
@@ -274,17 +280,17 @@ def test_downgrade_is_refused_when_audit_log_has_rows(migration_db_url: URL) -> 
     assert APPEND_ONLY in result.stderr
 
 
-async def test_worker_role_cannot_decide_its_own_approval(session_factory: Factory) -> None:
-    # Arrange: o worker (processo do agente) cria o pedido
+async def test_worker_role_cannot_decide_its_own_approval(
+    worker_session_factory: Factory,
+) -> None:
+    # Arrange: o worker (processo do agente, login membro de basho_worker, #21) cria o pedido
     tenant_id = uuid4()
-    async with tenant_session(session_factory, tenant_id) as session:
-        await session.execute(text("SET LOCAL ROLE basho_worker"))
+    async with tenant_session(worker_session_factory, tenant_id) as session:
         request = await PostgresApprovalStore(session).create(_request(tenant_id))
 
     # Act / Assert: mas não pode inserir a decisão (só basho_api, ADR-0005)
     with pytest.raises(DBAPIError, match="permission denied"):
-        async with tenant_session(session_factory, tenant_id) as session:
-            await session.execute(text("SET LOCAL ROLE basho_worker"))
+        async with tenant_session(worker_session_factory, tenant_id) as session:
             await PostgresApprovalStore(session).decide(
                 tenant_id, request.id, ApprovalDecision.APPROVED, uuid4()
             )
