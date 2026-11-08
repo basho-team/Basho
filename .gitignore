@@ -32,3 +32,6 @@ npm-debug.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# Logs da demonstração local
+.demo-logs/

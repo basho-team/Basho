@@ -18,6 +18,8 @@ preso em `running` após queda do processo não é recuperado automaticamente (b
 from __future__ import annotations
 
 import asyncio
+import selectors
+import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -395,7 +397,13 @@ def main() -> None:  # pragma: no cover - processo real
     from basho.logging import configure_logging
 
     configure_logging()
-    asyncio.run(run_forever(get_settings()))
+    if sys.platform == "win32":  # psycopg assíncrono exige SelectorEventLoop (o padrão é Proactor)
+        asyncio.run(
+            run_forever(get_settings()),
+            loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector()),
+        )
+    else:
+        asyncio.run(run_forever(get_settings()))
 
 
 if __name__ == "__main__":  # pragma: no cover
