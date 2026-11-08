@@ -127,17 +127,22 @@ export async function identityFromPair(request: Request, env: ServerEnv, userId:
 }
 
 export interface ForwardSpec {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "DELETE";
   /** Caminho já validado (IDs como UUID, query só de valores conhecidos). */
   path: string;
   identity: DemoReviewer;
   body?: unknown;
-  okStatus: number;
+  /** Um ou mais status de sucesso (ex.: 202 criado e 200 já existente). */
+  okStatus: number | readonly number[];
   okSchema: z.ZodType;
+  /** Headers extras para o backend (ex.: `Idempotency-Key`). Nunca vêm do navegador. */
+  headers?: Record<string, string>;
   unavailableCode: string;
   invalidCode: string;
   messages: RouteMessages;
   onConflict?: (body: unknown, cid: string) => Response;
+  /** Erros da rota com mensagem própria e segura (ex.: como compartilhar a pasta). `null` = padrão. */
+  onError?: (status: number, body: unknown, cid: string) => Response | null;
 }
 
 function identityHeaders(gate: Gate, identity: DemoReviewer): Record<string, string> {
@@ -165,6 +170,7 @@ export async function forward(deps: BffDeps, gate: Gate, spec: ForwardSpec): Pro
         "X-Request-Id": cid,
         ...(spec.body === undefined ? {} : { "Content-Type": "application/json" }),
         ...identityHeaders(gate, spec.identity),
+        ...spec.headers,
       },
       body: spec.body === undefined ? undefined : JSON.stringify(spec.body),
     });
@@ -173,18 +179,21 @@ export async function forward(deps: BffDeps, gate: Gate, spec: ForwardSpec): Pro
   }
 
   const body: unknown = await res.json().catch(() => null);
-  if (res.status === spec.okStatus) {
+  const accepted = typeof spec.okStatus === "number" ? [spec.okStatus] : spec.okStatus;
+  if (accepted.includes(res.status)) {
     const parsed = spec.okSchema.safeParse(body);
     if (!parsed.success) {
       return errorResponse(502, BffErrorCode.invalidResponse, COMMON_MESSAGES.invalidResponse, cid, { retryable: true });
     }
-    return Response.json(parsed.data, { status: spec.okStatus, headers: NO_STORE });
+    return Response.json(parsed.data, { status: res.status, headers: NO_STORE });
   }
   return mapError(res.status, body, cid, spec);
 }
 
 function mapError(status: number, body: unknown, cid: string, spec: ForwardSpec): Response {
   const { messages } = spec;
+  const custom = spec.onError?.(status, body, cid) ?? null;
+  if (custom) return custom;
   if (status === 409 && spec.onConflict) return spec.onConflict(body, cid);
   // 401 = segredo divergente entre BFF e backend: é falha de configuração, não do usuário.
   if (status === 503 || status === 401) return errorResponse(503, spec.unavailableCode, messages.unavailable, cid);
