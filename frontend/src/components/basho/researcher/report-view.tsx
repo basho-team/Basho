@@ -94,6 +94,7 @@ function Checks({ versionId }: { versionId: string }) {
       {run.isError && <ErrorBox error={run.error} />}
       {run.data && (
         <div className="space-y-1 text-sm">
+          <p className="text-xs text-zinc-500">Versão avaliada: <Mono>{versionId}</Mono></p>
           <p>Checks determinísticos: <Badge tone={run.data.deterministic.verdict === "pass" ? "ok" : "bad"}>{run.data.deterministic.verdict === "pass" ? "aprovado" : "reprovado"}</Badge></p>
           {run.data.deterministic.issues.length > 0 && (
             <ul className="list-disc pl-5 text-xs">
@@ -203,15 +204,22 @@ export function ReportView({ ctx, current, canAct }: { ctx: DemoContext; current
   const evidence = useEvidence(ctx);
   const shown = history.data?.find((h) => h.version.id === selected) ?? current;
   const isOld = shown.version.id !== current.current_version_id;
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ["reports"] });
-    void queryClient.invalidateQueries({ queryKey: ["history"] });
+  const refresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["reports"] }),
+      queryClient.invalidateQueries({ queryKey: ["history"] }),
+    ]);
   };
   const confirm = useMutation({
-    mutationFn: () => api.post(`reports/${shown.version.id}/review`, { decision: "text_approved" }),
-    onSuccess: () => { setConflict(null); refresh(); },
-    onError: (e) => { if (e instanceof ApiError && e.status === 409) setConflict(e.body as VersionConflict); },
+    mutationFn: (versionId: string) => api.post(`reports/${versionId}/review`, { decision: "text_approved" }),
+    onSuccess: () => { setConflict(null); void refresh(); },
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 409) {
+        setConflict(e.body as VersionConflict);
+      }
+    },
   });
+  const confirmingShown = confirm.variables === shown.version.id;
   const s = current.status;
   return (
     <Card
@@ -227,6 +235,7 @@ export function ReportView({ ctx, current, canAct }: { ctx: DemoContext; current
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <span>Versões:</span>
         {history.isPending && <Loading />}
+        {history.isError && <ErrorBox error={history.error} onRetry={() => void history.refetch()} />}
         {history.data?.map((h) => (
           <button key={h.version.id} type="button" onClick={() => { setSelected(h.version.id); setConflict(null); }}
             className={`rounded border px-2 py-0.5 ${h.version.id === shown.version.id ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300"}`}>
@@ -238,22 +247,24 @@ export function ReportView({ ctx, current, canAct }: { ctx: DemoContext; current
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <VersionBody out={shown} evidence={evidence.data ?? []} />
         <div className="space-y-4">
-          <Checks versionId={shown.version.id} />
+          <Checks key={shown.version.id} versionId={shown.version.id} />
           {canAct && (
             <div className="space-y-2 rounded border border-zinc-200 p-3">
               <h3 className="text-sm font-medium">Confirmar texto da v{shown.version.number}</h3>
               <p className="text-xs text-zinc-500">Confirma redação e fatos desta versão exata. Não é aprovação fiscal.</p>
-              <button type="button" className={buttonClass} onClick={() => confirm.mutate()} disabled={confirm.isPending}>
-                {confirm.isPending ? "Confirmando…" : `Confirmar v${shown.version.number}`}
+              <button type="button" className={buttonClass} onClick={() => confirm.mutate(shown.version.id)} disabled={confirmingShown && confirm.isPending}>
+                {confirmingShown && confirm.isPending ? "Confirmando…" : `Confirmar v${shown.version.number}`}
               </button>
               {conflict && (
                 <div role="alert" className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
                   Conflito de versão (409): {conflict.detail}. Nada foi gravado.{" "}
-                  <button type="button" className="underline" onClick={() => { setSelected(conflict.current_version_id); setConflict(null); }}>Abrir a versão atual</button>
+                  <button type="button" className="underline" onClick={() => {
+                    void refresh().then(() => { setSelected(conflict.current_version_id); setConflict(null); });
+                  }}>Abrir a versão atual</button>
                 </div>
               )}
-              {confirm.isError && !conflict && <ErrorBox error={confirm.error} />}
-              {confirm.isSuccess && <p className="text-xs text-emerald-700">Texto da v{shown.version.number} confirmado.</p>}
+              {confirmingShown && confirm.isError && !conflict && <ErrorBox error={confirm.error} />}
+              {confirmingShown && confirm.isSuccess && <p className="text-xs text-emerald-700">Texto da v{shown.version.number} confirmado.</p>}
             </div>
           )}
           {canAct && !isOld && <CorrectionForm key={shown.version.id} out={shown} ctx={ctx} onDone={(id) => { setSelected(id); refresh(); }} />}

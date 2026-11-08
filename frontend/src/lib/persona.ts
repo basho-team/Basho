@@ -12,7 +12,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export function parsePersona(raw: string | undefined | null): Persona | null {
   if (!raw) return null;
-  const [userId, role] = decodeURIComponent(raw).split(":");
+  let parts: string[];
+  try { parts = decodeURIComponent(raw).split(":"); }
+  catch { return null; }
+  if (parts.length !== 2) return null;
+  const [userId, role] = parts;
   if (!userId || !UUID_RE.test(userId)) return null;
   if (!ROLES.includes(role as Role)) return null;
   return { userId, role: role as Role };

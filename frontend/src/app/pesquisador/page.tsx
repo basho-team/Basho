@@ -16,7 +16,7 @@ function ResearcherWork({ ctx, userId }: { ctx: DemoContext; userId: string }) {
       <EvidencePanel ctx={ctx} userId={userId} />
       {reports.isPending && <Loading />}
       {reports.isError && <ErrorBox error={reports.error} onRetry={() => void reports.refetch()} />}
-      {reports.data && (mine ? <ReportView key={mine.status.researcher_id} ctx={ctx} current={mine} canAct /> : <ReportBuilder ctx={ctx} researcherId={userId} />)}
+      {reports.data && (mine ? <ReportView key={mine.current_version_id} ctx={ctx} current={mine} canAct /> : <ReportBuilder ctx={ctx} researcherId={userId} />)}
     </div>
   );
 }
