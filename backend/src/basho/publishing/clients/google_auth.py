@@ -64,10 +64,12 @@ class ServiceAccountTokens:
         info: ServiceAccountInfo,
         http: httpx.AsyncClient,
         *,
+        token_uri: str = TOKEN_URI,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._info = info
         self._http = http
+        self._token_uri = token_uri
         self._clock = clock
         self._cached: tuple[str, float] | None = None
 
@@ -82,7 +84,7 @@ class ServiceAccountTokens:
                 {
                     "iss": self._info.client_email,
                     "scope": DRIVE_SCOPE,
-                    "aud": TOKEN_URI,
+                    "aud": self._token_uri,
                     "iat": now,
                     "exp": now + JWT_LIFETIME_SECONDS,
                 }
@@ -104,7 +106,7 @@ class ServiceAccountTokens:
             return self._cached[0]
         try:
             response = await self._http.post(
-                TOKEN_URI,
+                self._token_uri,
                 data={"grant_type": _GRANT, "assertion": self._assertion(int(now))},
                 timeout=15.0,
             )

@@ -1,4 +1,4 @@
-import { FlaskConical, House, LayoutDashboard, Scale, type LucideIcon } from "lucide-react";
+import { FlaskConical, House, LayoutDashboard, Plug, Scale, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -14,6 +14,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/", label: "Início", icon: House, exact: true },
   { href: "/pesquisador", label: "Pesquisador", person: "Ana Ribeiro / Bruno Costa", icon: FlaskConical },
   { href: "/gerente", label: "Gerente", person: "Marina Duarte", icon: LayoutDashboard },
+  { href: "/gerente/integracoes", label: "Integrações", person: "Drive, Notion e GitHub", icon: Plug },
   { href: "/fiscal", label: "Fiscal", person: "Rafael Lima", icon: Scale },
 ];
 

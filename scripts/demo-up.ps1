@@ -1,20 +1,27 @@
-<#
+﻿<#
 .SYNOPSIS
   Sobe a demonstração do Basho no Windows: Postgres, migrações, seed, API e front (modo api).
 
 .DESCRIPTION
   Tudo local e descartável: credenciais de demo, dados sintéticos (is_synthetic). Não use em
   produção. Pré-requisitos: Docker Desktop ligado, uv e Node instalados.
-  Para o agente rodar de verdade, veja docs/demo.md (worker com chaves reais).
+  O worker também sobe: é ele que publica os relatórios no Drive/Notion e roda o agente.
+  Publicação real: defina GOOGLE_SERVICE_ACCOUNT_JSON e/ou NOTION_TOKEN antes de rodar.
+  -FakeProviders: usa um servidor FALSO de Drive/Notion (scripts/dev/fake_providers.py) para
+  ensaiar o fluxo sem credenciais; os documentos abrem no navegador em http://127.0.0.1:9100.
+  Para o agente rodar de verdade, veja docs/demo.md (chaves de LLM).
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts/demo-up.ps1
+  powershell -ExecutionPolicy Bypass -File scripts/demo-up.ps1 -FakeProviders
   powershell -ExecutionPolicy Bypass -File scripts/demo-up.ps1 -Down
 #>
 param(
     [int]$DbPort = 55499,
     [int]$ApiPort = 8010,
     [int]$WebPort = 3010,
+    [int]$FakePort = 9100,
+    [switch]$FakeProviders,
     [switch]$Down
 )
 
@@ -32,8 +39,16 @@ function Stop-Port([int]$port) {
         ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
 }
 
+function Stop-Pids {
+    $file = Join-Path $logs "worker.pid"
+    if (Test-Path $file) {
+        Get-Content $file | ForEach-Object { Stop-Process -Id ([int]$_) -Force -ErrorAction SilentlyContinue }
+        Remove-Item $file -Force
+    }
+}
+
 if ($Down) {
-    Stop-Port $ApiPort; Stop-Port $WebPort
+    Stop-Port $ApiPort; Stop-Port $WebPort; Stop-Port $FakePort; Stop-Pids
     docker rm -f $container | Out-Null
     Write-Host "Demo parada (API, front e Postgres descartável removidos)."
     return
@@ -87,11 +102,41 @@ END `$`$;
     $seed = uv run python -m basho.seed | Select-Object -Last 1 | ConvertFrom-Json
     $projectId = $seed.project_id
 
+    # 3.1 Servidor falso de Drive/Notion (opcional, só ensaio)
+    if ($FakeProviders) {
+        $keyScript = Join-Path $logs "make_fake_sa.py"
+        @'
+import json, sys
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+open(sys.argv[1], "w").write(json.dumps({"client_email": "basho-demo@projeto-falso.iam.gserviceaccount.com", "private_key": pem}))
+'@ | Set-Content -Encoding ascii $keyScript
+        $saFile = Join-Path $logs "fake-sa.json"
+        uv run python $keyScript $saFile
+        Stop-Port $FakePort
+        Start-Process -WindowStyle Hidden -FilePath "uv" -ArgumentList @("run", "python", (Join-Path $root "scripts/dev/fake_providers.py"), "$FakePort") `
+            -RedirectStandardOutput (Join-Path $logs "fake.out.log") -RedirectStandardError (Join-Path $logs "fake.err.log")
+        $env:GOOGLE_SERVICE_ACCOUNT_JSON = $saFile
+        $env:GOOGLE_DRIVE_API_URL = "http://127.0.0.1:$FakePort"
+        $env:GOOGLE_TOKEN_URI = "http://127.0.0.1:$FakePort/token"
+        $env:NOTION_TOKEN = "fake-notion-token"
+        $env:NOTION_API_URL = "http://127.0.0.1:$FakePort"
+    }
+
     # 4. API
     Stop-Port $ApiPort
     $env:API_PORT = "$ApiPort"
     Start-Process -WindowStyle Hidden -FilePath "uv" -ArgumentList @("run", "python", "-m", "basho.serve") `
         -RedirectStandardOutput (Join-Path $logs "api.out.log") -RedirectStandardError (Join-Path $logs "api.err.log")
+
+    # 4.1 Worker (login próprio, membro de basho_worker): publica e roda o agente
+    Stop-Pids
+    $env:DATABASE_URL = "postgresql+psycopg://basho_worker_login:worker_demo@127.0.0.1:${DbPort}/basho"
+    $worker = Start-Process -PassThru -WindowStyle Hidden -FilePath "uv" -ArgumentList @("run", "python", "-m", "basho.agent.worker") `
+        -RedirectStandardOutput (Join-Path $logs "worker.out.log") -RedirectStandardError (Join-Path $logs "worker.err.log")
+    $worker.Id | Set-Content (Join-Path $logs "worker.pid")
 } finally { Pop-Location }
 
 for ($i = 0; $i -lt 30; $i++) {
@@ -119,5 +164,7 @@ Write-Host "Demo no ar" -ForegroundColor Green
 Write-Host "  Projeto da demo : $projectId"
 Write-Host "  Front           : http://127.0.0.1:$WebPort  (gerente: /gerente/pendencias, /gerente/dossie)"
 Write-Host "  API             : http://127.0.0.1:$ApiPort/docs"
+Write-Host "  Integrações     : http://127.0.0.1:$WebPort/gerente/integracoes  (cole o link da pasta/página)"
+if ($FakeProviders) { Write-Host "  Servidor FALSO  : http://127.0.0.1:$FakePort/_state  (documentos gerados abrem aqui)" }
 Write-Host "  Logs            : $logs"
 Write-Host "  Parar           : powershell -File scripts/demo-up.ps1 -Down"

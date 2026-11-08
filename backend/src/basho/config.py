@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     O usuário compartilha a pasta com o e-mail dela. Vazio = Drive indisponível."""
     notion_token: SecretStr | None = None
     """Token da integração interna do Notion. Vazio = Notion indisponível."""
+    google_drive_api_url: AnyHttpUrl | None = None
+    google_token_uri: AnyHttpUrl | None = None
+    notion_api_url: AnyHttpUrl | None = None
+    """Endpoints alternativos, só para desenvolvimento (servidor falso local). Vazio = oficiais."""
     tenant_id: UUID
     # Segredo server-to-server do BFF que repassa a identidade do revisor (#39). Sem ele,
     # endpoints formais de revisão ficam fechados (503). Placeholder até a auth real.

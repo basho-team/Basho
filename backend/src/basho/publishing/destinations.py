@@ -13,12 +13,15 @@ import httpx
 
 from basho.config import Settings
 from basho.connectors.github import GithubClient, GithubError, GithubErrorCode, RepoRef
+from basho.publishing.clients.drive import API_URL as DRIVE_API_URL
 from basho.publishing.clients.drive import DriveClient
 from basho.publishing.clients.errors import ProviderError, ProviderErrorCode
 from basho.publishing.clients.google_auth import (
+    TOKEN_URI,
     ServiceAccountInfo,
     ServiceAccountTokens,
 )
+from basho.publishing.clients.notion import API_URL as NOTION_API_URL
 from basho.publishing.clients.notion import NotionClient
 from basho.publishing.links import LinkKind
 from basho.publishing.render import RenderedDoc
@@ -109,15 +112,28 @@ class IntegrationRegistry:
             except ProviderError:
                 info = None
             if info is not None:
-                tokens = ServiceAccountTokens(info, self._http)
+                token_uri = settings.google_token_uri
+                tokens = ServiceAccountTokens(
+                    info, self._http, token_uri=str(token_uri) if token_uri else TOKEN_URI
+                )
                 self.service_account_email = tokens.email
+                drive_url = settings.google_drive_api_url
                 self._destinations[LinkKind.DRIVE_FOLDER] = DriveDestination(
-                    DriveClient(tokens=tokens, http=self._http)
+                    DriveClient(
+                        tokens=tokens,
+                        http=self._http,
+                        api_url=str(drive_url) if drive_url else DRIVE_API_URL,
+                    )
                 )
         notion = settings.notion_token
         if notion is not None and notion.get_secret_value().strip():
+            notion_url = settings.notion_api_url
             self._destinations[LinkKind.NOTION_PAGE] = NotionDestination(
-                NotionClient(token=notion, http=self._http)
+                NotionClient(
+                    token=notion,
+                    http=self._http,
+                    api_url=str(notion_url) if notion_url else NOTION_API_URL,
+                )
             )
         if self._github is None and settings.github_token.get_secret_value().strip():
             self._github = GithubClient(token=settings.github_token, http_client=self._http)
