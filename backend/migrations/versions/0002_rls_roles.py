@@ -92,5 +92,7 @@ def downgrade() -> None:
     op.execute("ALTER TABLE evidence_events DISABLE ROW LEVEL SECURITY")
     op.execute(f"REVOKE ALL ON evidence_events FROM {roles}")
     op.execute(f"REVOKE USAGE ON SCHEMA public FROM {roles}")
+    # CREATE em public para PUBLIC não é restaurado de propósito: reabriria um vetor de
+    # escalada e já é o padrão do PG15+.
     # Os roles NÃO são removidos: são objetos do cluster, podem ter privilégios em outros
     # bancos e logins membros. Sem grants aqui, ficam inertes (NOLOGIN, sem privilégio).

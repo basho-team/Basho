@@ -63,8 +63,8 @@ Testes marcados com `@pytest.mark.db` usam Postgres real. Defina `TEST_DATABASE_
 (fallback: `DATABASE_URL`) com o **role dono** do servidor local (`docker compose up -d postgres`);
 os testes criam logins `basho_test_*` com senha aleatória, membros de `basho_api`/`basho_worker`,
 e rodam o ledger **como o role da app**;
-os testes recriam os bancos dedicados `basho_test` e `basho_test_migrations`, sem tocar no
-banco de dev. Sem banco acessível eles são pulados, exceto com `REQUIRE_DB_TESTS=1` (usado no CI), que os faz falhar.
+os testes criam bancos dedicados `basho_test_<sufixo>` e `basho_test_migrations_<sufixo>` (sufixo
+aleatório por sessão, removidos ao fim), sem tocar no banco de dev nem colidir com outras execuções. Sem banco acessível eles são pulados, exceto com `REQUIRE_DB_TESTS=1` (usado no CI), que os faz falhar.
 
 ```bash
 export TEST_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/basho
