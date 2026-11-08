@@ -33,7 +33,24 @@ Dois sites, todos com dados **sintéticos** (`is_synthetic`):
 `BASHO_DEMO_REVIEWERS`, `DEMO_BASIC_AUTH_USER`, `DEMO_BASIC_AUTH_PASSWORD`.
 
 Sem as credenciais de Basic Auth, o `src/proxy.ts` deixa o modo `mock` aberto e **fecha** o
-modo `api` (503), porque o BFF ainda não autentica (#47).
+modo `api` (503). Depois do portão do deploy, o proxy ainda exige a sessão individual do login
+por função (#68, ADR-0011 proposta): uma camada não substitui a outra.
+
+## Login por função (os dois sites)
+
+| Variável | Vercel | Railway `web` |
+| --- | --- | --- |
+| `BASHO_DEMO_LOGIN_ENABLED` | `true` | `true` |
+| `BASHO_DEMO_PASSWORD_HASH` | `scrypt:<salt>:<hash>` | idem |
+| `BASHO_DEMO_SESSION_SECRET` | ≥ 32 caracteres (sessão assinada: sem disco compartilhado) | — (sessão em arquivo, revogável) |
+| `BASHO_DEMO_BACKEND_USERS` | — | `{"ana":"<uuid pesquisador>","marina":"<uuid gerente>"}` (UUIDs do seed) |
+
+No Vercel o disco é somente leitura e não é compartilhado entre instâncias; sem
+`BASHO_DEMO_SESSION_SECRET` o login responde 500. A sessão assinada não tem revogação no
+servidor (logout apaga o cookie; um token copiado vale até expirar, ≤ 4 h).
+
+A origem esperada nas rotas POST vem de `X-Forwarded-Proto/Host` (`publicOrigin`), porque
+atrás do proxy `request.url` é o endereço interno do container.
 
 ## Atualizar
 
