@@ -12,13 +12,11 @@ aprovação. Pode conter conteúdo externo ou dado pessoal: nunca vai para log n
 e só volta ao Maker envelopado como dado não confiável. Retenção/expurgo ficam para a política
 de retenção do tenant (backlog).
 
-Cadeia combinada: 0002_rls_roles (#21) → 0003_reports (#39) → 0004. Enquanto 0002/0003 não
-estiverem na main, ``down_revision`` aponta para 0001; **antes do merge** ajustar para a última
-migração já na main (0003, ou 0002 se reports ainda não entrou) — duas heads quebram
-``alembic upgrade head``. Os roles são criados só se ainda não existirem (a 0002 é a dona deles).
+Cadeia: 0002_rls_roles (#21) → 0003_reports (#39) → 0004. Os roles da aplicação são da
+0002; aqui só recebem GRANT.
 
 Revision ID: 0004
-Revises: 0001
+Revises: 0003
 Create Date: 2026-11-07
 """
 
@@ -28,7 +26,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0004"
-down_revision: str | Sequence[str] | None = "0001"
+down_revision: str | Sequence[str] | None = "0003"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -153,12 +151,8 @@ def _protect_tables() -> None:
         $$
         """
     )
-    for role in _APP_ROLES:
-        create_if_missing = (
-            f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') "  # noqa: S608
-            f"THEN CREATE ROLE {role} NOLOGIN NOSUPERUSER NOBYPASSRLS; END IF; END $$"
-        )
-        op.execute(create_if_missing)
+    # Roles basho_api/basho_worker vêm da 0002 (que recusa role pré-existente privilegiado);
+    # o GRANT abaixo falha alto se faltarem.
     for table in _TABLES:
         op.execute(
             f"CREATE TRIGGER trg_{table}_append_only BEFORE UPDATE OR DELETE ON {table} "
