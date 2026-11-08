@@ -30,6 +30,14 @@ Interfaces combinadas na hora 0 para que backend, agente e frontend avancem em p
 
 Tools do MVP: `github_list_commits`, `github_get_pull_request`, `ledger_query_events` (read) · `ledger_record_draft`, `pending_item_open` (write_internal) · `github_create_issue` (external).
 
+**Registro** (`agent/registry.py`). `ToolRegistry` revalida cada `ToolSpec` e recusa na inicialização (`ToolRegistrationError`): spec ausente ou sem `level`, nível `formal`, nome duplicado ou nível diferente de `MVP_TOOLS`. `specs_for(profile)` = allowlist ∩ registro ∩ `AGENT_ALLOWED_LEVELS`.
+
+**Policy** (`agent/policy.py`). `ToolPolicy.execute(ToolCallContext(tenant_id, run_id, profile), tool, arguments)` decide em código a cada chamada: tool desconhecida / nível não permitido / fora da allowlist → `denied` (`error` = `unknown_tool | level_not_allowed | not_in_profile`); `external` com `spec.requires_approval` ou com a configuração do tenant (padrão: requer) → `pending_approval` + `approval_id`, **sem executar**; demais executam com timeout. Falha da tool → `error` genérico (`tool_failed | tool_timeout | invalid_result | tool_error`). `untrusted_data` volta envelopado por `envelope_untrusted` (`<untrusted_data tool="...">`, com `<>&` escapados). Implementações simuladas em `agent/simulated_tools.py` (texto externo só em `untrusted_data`; `data` com identificadores; tudo `is_synthetic`).
+
+**Aprovação** (`agent/approvals.py`). Append-only: `tool_approval_requests` (imutável, guarda a entrada proposta) + `tool_approval_decisions` (`UNIQUE(approval_id)`); estado derivado `pending | approved | rejected`. `decide_approval` grava a decisão e o audit; **não executa** a tool (o worker executa depois, #10). Endpoint humano fica para quando houver auth.
+
+**Audit** (módulo `audit`). `NewAuditEntry(tenant_id, event_type, actor_type, actor_id?, run_id?, tool, level?, decision, outcome, reason_code?, input_summary, approval_id?)`; `input_summary` = só chaves de primeiro nível + tamanho em bytes, **nunca valores**. Tabela `audit_log` fora do ledger (registro operacional, não evidência). Migração `0004_tool_audit`: as três tabelas são append-only (trigger), com RLS forçada por `tenant_id` e só `SELECT, INSERT` para `basho_api`/`basho_worker`.
+
 ## 3. Artefato do Maker
 `ActivityRecordDraft`: `claims[]` por seção (desafio, hipótese, método, resultado, incerteza), cada um com ≥ 1 `evidence_id`; horas/participantes só como **referência** a eventos formais; lacunas em `missing[]` viram pendências com pergunta objetiva; `eligibility_note` nunca afirma enquadramento.
 
