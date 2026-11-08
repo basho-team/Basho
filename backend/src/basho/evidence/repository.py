@@ -58,6 +58,18 @@ class EvidenceRepository:
         )
         return list((await self._session.execute(statement)).scalars())
 
+    async def existing_source_refs(
+        self, tenant_id: UUID, project_id: UUID, source: str, refs: list[str]
+    ) -> set[str]:
+        """`source_ref` de ``refs`` já registrados para a origem no tenant e projeto."""
+        statement = select(EvidenceEventRow.source_ref).where(
+            EvidenceEventRow.tenant_id == tenant_id,
+            EvidenceEventRow.project_id == project_id,
+            EvidenceEventRow.source == source,
+            EvidenceEventRow.source_ref.in_(refs),
+        )
+        return {ref for ref in (await self._session.execute(statement)).scalars() if ref}
+
     async def project_of(self, tenant_id: UUID, event_id: UUID) -> UUID | None:
         statement = select(EvidenceEventRow.project_id).where(
             EvidenceEventRow.tenant_id == tenant_id, EvidenceEventRow.id == event_id
