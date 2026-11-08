@@ -1,0 +1,104 @@
+{
+  "_synthetic": true,
+  "case_id": "hours_in_text",
+  "description": "Número de horas inferido e escrito no texto em vez de referência a evento formal.",
+  "ledger_context": [
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000042",
+      "kind": "PR_MERGED",
+      "source_ref": "PR#42",
+      "summary": "Quantização int8 dinâmica; latência -38%."
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000043",
+      "kind": "PR_OPENED",
+      "source_ref": "PR#43",
+      "summary": "Rebalanceamento com SMOTE, sem descrição de hipótese."
+    },
+    {
+      "id": "bbbbbbbb-0000-4000-8000-0000000c94ab",
+      "kind": "COMMIT",
+      "source_ref": "c94ab",
+      "summary": "Benchmark: precisão -4,1 p.p. no dataset de vibração."
+    }
+  ],
+  "draft": {
+    "project_id": "11111111-1111-4111-8111-111111111111",
+    "researcher_id": "33333333-3333-4333-8333-333333333333",
+    "period": {
+      "start": "2026-10-01",
+      "end": "2026-10-31",
+      "timezone": "America/Sao_Paulo",
+      "periodicity": "monthly"
+    },
+    "summary": "Experimentos de quantização do modelo de detecção de falhas e início do rebalanceamento do dataset de vibração.",
+    "claims": [
+      {
+        "section": "technological_challenge",
+        "text": "O pesquisador dedicou 40 horas à redução de latência em hardware embarcado.",
+        "status": "supported",
+        "evidence_ids": [
+          "aaaaaaaa-0000-4000-8000-000000000042"
+        ]
+      },
+      {
+        "section": "result",
+        "text": "Int8 dinâmico reduziu a latência em 38%, com queda de 4,1 p.p. de precisão no dataset de vibração.",
+        "status": "supported",
+        "evidence_ids": [
+          "aaaaaaaa-0000-4000-8000-000000000042",
+          "bbbbbbbb-0000-4000-8000-0000000c94ab"
+        ]
+      },
+      {
+        "section": "uncertainty",
+        "text": "Não se sabe se a perda de precisão decorre da calibração ou do desbalanceamento do dataset.",
+        "status": "supported",
+        "evidence_ids": [
+          "aaaaaaaa-0000-4000-8000-000000000042"
+        ]
+      },
+      {
+        "section": "hypothesis",
+        "text": "O rebalanceamento do dataset de vibração com SMOTE (PR #43) não tem hipótese nem critério de sucesso registrados.",
+        "status": "pending",
+        "evidence_ids": [
+          "aaaaaaaa-0000-4000-8000-000000000043"
+        ],
+        "question": "Qual hipótese motivou o rebalanceamento com SMOTE (PR #43) e qual critério define sucesso?",
+        "ask_role": "pesquisador"
+      }
+    ],
+    "experiments": [
+      {
+        "description": "Quantização int8 dinâmica para reduzir a latência de inferência embarcada.",
+        "outcome": "positive",
+        "evidence_ids": [
+          "aaaaaaaa-0000-4000-8000-000000000042"
+        ]
+      },
+      {
+        "description": "Manter a precisão do modelo após quantização int8: queda de 4,1 p.p. no dataset de vibração.",
+        "outcome": "negative",
+        "evidence_ids": [
+          "bbbbbbbb-0000-4000-8000-0000000c94ab"
+        ]
+      }
+    ],
+    "missing": [
+      {
+        "field": "formal_hours",
+        "question": "Quantas horas o pesquisador dedicou ao projeto no período, segundo o registro oficial?",
+        "ask_role": "coordenador"
+      }
+    ],
+    "formal_hours_event_ids": [],
+    "eligibility_note": "Potencialmente qualificável, sujeito a análise dos responsáveis."
+  },
+  "expected": {
+    "schema_valid": true,
+    "check_violations": [
+      "formal_data_in_text"
+    ]
+  }
+}
