@@ -7,3 +7,7 @@ Este caminho é preservado para os links existentes no README, nas ADRs e nas in
 ## 5. Evidence Ledger e estados
 
 A seção anteriormente referenciada pela ADR-0003 está em [§5 — Ledger, dados e contratos](arquitetura.md#5-ledger-dados-e-contratos). A proposta distingue estados de processamento, sustentação de afirmações e aprovação humana de atos sensíveis.
+
+## Demonstração local implementada em 08/11/2026
+
+A interface em `frontend/` possui uma implementação local com serviços determinísticos, fontes fictícias e persistência no navegador. A [ADR-0009](adr/0009-demonstracao-local-deterministica.md) explicita esse recorte e seus limites, sem substituir as decisões da arquitetura de produção. Consulte o [guia de execução e demonstração](../frontend/README.md) para os cenários A, B e C e verificações automatizadas. As integrações, o isolamento de produção e o processamento por agentes descritos na arquitetura alvo não são apresentados como implementados.
