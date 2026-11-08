@@ -19,14 +19,25 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from basho.agent.artifacts import ReportingPeriod, ResearchReportDraft
-from basho.evidence import MAX_PAGE_SIZE, EvidenceNotFoundError, EvidenceService
+from basho.evidence import (
+    MAX_PAGE_SIZE,
+    CorrectionPropagation,
+    EvidenceNotFoundError,
+    EvidenceService,
+)
 from basho.evidence.contracts import Actor, ActorType, EventKind, EventSource, NewEvidenceEvent
-from basho.reports.auto_draft import AUTO_DRAFT_ACTOR, build_auto_draft
+from basho.reports.auto_draft import AUTO_DRAFT_ACTOR, NothingToDraftError, build_auto_draft
 from basho.reports.consolidation import ReportInput, consolidate
 from basho.reports.corrections import ReportCorrection, apply_correction
 from basho.reports.models import ReportReviewRow, ReportVersionRow
 from basho.reports.repository import ReportRepository
-from basho.reports.schemas import ReportVersionOut, ReviewIn, ReviewOut
+from basho.reports.schemas import (
+    PeriodClosingOut,
+    ReportReviewFlag,
+    ReportVersionOut,
+    ReviewIn,
+    ReviewOut,
+)
 from basho.reports.versions import (
     ChangeRecord,
     ReportReview,
@@ -400,6 +411,7 @@ class ReportQueryService:
     """Leituras do projeto/período e rascunho automático (por regras, sem LLM)."""
 
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._repository = ReportRepository(session)
         self._ledger = EvidenceService(session)
         self._reports = ReportService(session)
@@ -427,6 +439,54 @@ class ReportQueryService:
                 )
             )
         return inputs
+
+    async def close_period(
+        self, tenant_id: UUID, project_id: UUID, period: ReportingPeriod
+    ) -> PeriodClosingOut:
+        """Fechamento autônomo: rascunho (regras, sem LLM) para cada pesquisador com evidência
+        no período e ainda sem relatório. Idempotente; não aprova nada nem decide nada."""
+        events = await self._ledger.query(tenant_id, project_id=project_id, limit=MAX_PAGE_SIZE)
+        researchers = sorted(
+            {
+                UUID(str(e.payload["researcher_id"]))
+                for e in events
+                if isinstance(e.payload.get("researcher_id"), str) and "artifact" not in e.payload
+            },
+            key=str,
+        )
+        existing = {
+            r.status.researcher_id for r in await self.list_current(tenant_id, project_id, period)
+        }
+        created: list[ReportVersionOut] = []
+        skipped: list[UUID] = []
+        for researcher_id in researchers:
+            if researcher_id in existing:
+                skipped.append(researcher_id)
+                continue
+            try:
+                created.append(await self.auto_draft(tenant_id, project_id, researcher_id, period))
+            except NothingToDraftError:
+                skipped.append(researcher_id)
+        return PeriodClosingOut(created=tuple(created), already_drafted_or_empty=tuple(skipped))
+
+    async def needs_review(
+        self, tenant_id: UUID, project_id: UUID, period: ReportingPeriod
+    ) -> list[ReportReviewFlag]:
+        """Versões atuais levadas a needs_review por correção de evidência citada (#11)."""
+        current = await self.list_current(tenant_id, project_id, period)
+        by_event = {c.evidence_event_id: c for c in current}
+        flags = await CorrectionPropagation(self._session).pending_reviews(tenant_id, project_id)
+        return [
+            ReportReviewFlag(
+                report_version_id=by_event[f.artifact_event_id].version.id,
+                researcher_id=by_event[f.artifact_event_id].status.researcher_id,
+                superseded_event_id=f.superseded_event_id,
+                cause_event_id=f.cause_event_id,
+                marked_at=f.marked_at,
+            )
+            for f in flags
+            if f.artifact_event_id in by_event
+        ]
 
     async def list_current(
         self, tenant_id: UUID, project_id: UUID, period: ReportingPeriod
