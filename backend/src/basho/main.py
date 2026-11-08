@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict
 
 from basho.config import Settings, get_settings
-from basho.db import create_engine, create_session_factory
+from basho.db import assert_least_privilege, create_engine, create_session_factory
 from basho.logging import configure_logging, get_logger
 from basho.reports.api import router as reports_router
 
@@ -33,6 +33,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # Aborta o startup se DATABASE_URL for superuser, BYPASSRLS ou dono (ADR-0006, #21).
+        await assert_least_privilege(engine)
         yield
         await engine.dispose()
 

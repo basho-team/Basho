@@ -9,7 +9,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.engine import URL
 
 from basho.config import Settings
-from basho.db import tenant_session
+from basho.db import UnsafeDatabaseRoleError, tenant_session
+from basho.evidence import EvidenceService
+from basho.evidence.contracts import EventKind
 from basho.main import create_app
 from basho.reports.schemas import ReportVersionOut
 from conftest import VALID_ENV
@@ -19,13 +21,20 @@ pytestmark = pytest.mark.db
 
 PENDING_CLAIM = 3
 HYPOTHESIS = "Hipótese registrada: SMOTE reduz o viés de classe sem perda de recall."
-RESEARCHER_HEADERS = {"X-Basho-User-Id": str(RESEARCHER), "X-Basho-Role": "researcher"}
+IDENTITY_SECRET = "test-identity-secret"  # noqa: S105 -- sintético
+SECRET_HEADER = {"X-Basho-Identity-Secret": IDENTITY_SECRET}
+RESEARCHER_HEADERS = {
+    "X-Basho-User-Id": str(RESEARCHER),
+    "X-Basho-Role": "researcher",
+    **SECRET_HEADER,
+}
 
 
-def _settings(url: URL, tenant_id: UUID) -> Settings:
-    env = {name.lower(): value for name, value in VALID_ENV.items()}
+def _settings(url: URL, tenant_id: UUID, secret: str | None = IDENTITY_SECRET) -> Settings:
+    env: dict[str, str | None] = {name.lower(): value for name, value in VALID_ENV.items()}
     env["database_url"] = url.render_as_string(hide_password=False)
     env["tenant_id"] = str(tenant_id)
+    env["reviewer_identity_secret"] = secret
     return Settings.model_validate(env)
 
 
@@ -35,10 +44,11 @@ def tenant_id() -> UUID:
 
 
 @pytest.fixture
-async def app(migrated_ledger_url: URL, tenant_id: UUID) -> AsyncIterator[FastAPI]:
-    created = create_app(_settings(migrated_ledger_url, tenant_id))
-    yield created
-    await created.state.engine.dispose()
+async def app(api_url: URL, tenant_id: UUID) -> AsyncIterator[FastAPI]:
+    """App conectada como o login de basho_api (#21), com o lifespan rodando."""
+    created = create_app(_settings(api_url, tenant_id))
+    async with created.router.lifespan_context(created):
+        yield created
 
 
 @pytest.fixture
@@ -148,14 +158,24 @@ async def test_review_of_old_version_returns_409_with_current_id(
     assert v2_status["researcher"]["state"] == "awaiting_review"
 
 
-async def test_review_without_identity_returns_401(client: AsyncClient, seed: Seed) -> None:
+async def test_review_without_identity_or_wrong_secret_is_401(
+    client: AsyncClient, seed: Seed
+) -> None:
     v1 = await seed()
 
-    response = await client.post(
-        f"/api/v1/reports/{v1.version.id}/review", json={"decision": "text_approved"}
+    without_identity = await client.post(
+        f"/api/v1/reports/{v1.version.id}/review",
+        json={"decision": "text_approved"},
+        headers=SECRET_HEADER,
+    )
+    forged = await client.post(
+        f"/api/v1/reports/{v1.version.id}/review",
+        json={"decision": "text_approved"},
+        headers={**RESEARCHER_HEADERS, "X-Basho-Identity-Secret": "wrong"},
     )
 
-    assert response.status_code == 401
+    assert without_identity.status_code == 401
+    assert forged.status_code == 401
 
 
 async def test_review_as_researcher_by_non_author_returns_403(
@@ -166,7 +186,7 @@ async def test_review_as_researcher_by_non_author_returns_403(
     response = await client.post(
         f"/api/v1/reports/{v1.version.id}/review",
         json={"decision": "text_approved"},
-        headers={"X-Basho-User-Id": str(uuid4()), "X-Basho-Role": "researcher"},
+        headers={**RESEARCHER_HEADERS, "X-Basho-User-Id": str(uuid4())},
     )
 
     assert response.status_code == 403
@@ -199,3 +219,57 @@ async def test_correction_with_approval_is_rejected_at_the_edge(
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("secret", [None, ""])
+async def test_review_is_closed_when_identity_secret_is_not_configured(
+    api_url: URL, secret: str | None
+) -> None:
+    # Arrange: vazio conta como ausente (um header vazio nunca pode bater)
+    app = create_app(_settings(api_url, uuid4(), secret=secret))
+    headers = {**RESEARCHER_HEADERS, "X-Basho-Identity-Secret": ""}
+
+    # Act
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http,
+    ):
+        response = await http.post(
+            f"/api/v1/reports/{uuid4()}/review", json={"decision": "text_approved"}, headers=headers
+        )
+
+    # Assert
+    assert response.status_code == 503
+
+
+async def test_review_event_records_unverified_identity(
+    app: FastAPI, client: AsyncClient, seed: Seed, tenant_id: UUID
+) -> None:
+    # Arrange
+    v1 = await seed()
+
+    # Act
+    response = await client.post(
+        f"/api/v1/reports/{v1.version.id}/review",
+        json={"decision": "text_approved"},
+        headers=RESEARCHER_HEADERS,
+    )
+
+    # Assert
+    async with tenant_session(app.state.session_factory, tenant_id) as session:
+        event = await EvidenceService(session).get(
+            tenant_id, UUID(response.json()["evidence_event_id"])
+        )
+    assert event.kind is EventKind.USER_CONFIRMATION
+    assert event.payload["identity_verified"] is False
+
+
+async def test_startup_fails_when_database_url_is_the_owner(
+    migrated_ledger_url: URL,
+) -> None:
+    app = create_app(_settings(migrated_ledger_url, uuid4()))
+
+    with pytest.raises(UnsafeDatabaseRoleError):
+        async with app.router.lifespan_context(app):
+            pass
+    await app.state.engine.dispose()

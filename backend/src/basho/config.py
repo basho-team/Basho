@@ -17,7 +17,7 @@ class ConfigError(RuntimeError):
 
 
 class Settings(BaseSettings):
-    """Variáveis de ambiente da aplicação. Todas são obrigatórias."""
+    """Variáveis de ambiente da aplicação. Todas são obrigatórias, exceto as com padrão."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     checker_model: str
     github_token: SecretStr
     tenant_id: UUID
+    # Segredo server-to-server do BFF que repassa a identidade do revisor (#39). Sem ele,
+    # endpoints formais de revisão ficam fechados (503). Placeholder até a auth real.
+    reviewer_identity_secret: SecretStr | None = None
 
 
 def _describe_errors(error: ValidationError) -> str:

@@ -3,8 +3,12 @@
 Persistência dos tipos de domínio de `basho.reports` (PR #43): `ReportVersion` e `ReportReview`.
 Tabelas append-only (trigger + REVOKE) com RLS por tenant (ADR-0003, ADR-0006).
 
+Privilégios (roles da 0002, #21): `basho_api` tem SELECT/INSERT nas três tabelas;
+`basho_worker` (processo do agente) cria versões, mas só LÊ `report_reviews`: revisão é
+ação formal, só por endpoint humano (ADR-0005).
+
 Revision ID: 0003
-Revises: 0001
+Revises: 0002
 Create Date: 2026-11-07
 """
 
@@ -14,8 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0003"
-# TODO(#21): trocar para "0002" ao rebasear sobre 0002_rls_roles da Sentinela
-down_revision: str | Sequence[str] | None = "0001"
+down_revision: str | Sequence[str] | None = "0002"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -26,7 +29,13 @@ _REVIEWER_ROLES = ("researcher", "manager")
 _DECISIONS = ("text_approved", "changes_requested")
 
 _TABLES = ("reporting_periods", "report_versions", "report_reviews")
-_ROLES = ("basho_api", "basho_worker")  # criados pela 0002 (#21); podem não existir ainda
+_APP_ROLES = ("basho_api", "basho_worker")  # criados pela 0002 (#21)
+# GRANT por role. O worker não insere revisão (ação formal, ADR-0005).
+_GRANTS = (
+    ("SELECT, INSERT", "reporting_periods, report_versions, report_reviews", "basho_api"),
+    ("SELECT, INSERT", "reporting_periods, report_versions", "basho_worker"),
+    ("SELECT", "report_reviews", "basho_worker"),
+)
 _TENANT_EXPR = "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 
 
@@ -136,20 +145,6 @@ def _create_tables() -> None:
     )
 
 
-def _grant_if_role_exists(statement: str) -> str:
-    """Bloco DO que aplica `statement` (com {role}) só para roles já existentes."""
-    blocks = "\n".join(
-        f"IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN "  # noqa: S608
-        f"EXECUTE {_quote(statement.format(role=role))}; END IF;"
-        for role in _ROLES
-    )
-    return f"DO $do$ BEGIN\n{blocks}\nEND $do$"
-
-
-def _quote(sql: str) -> str:
-    return "'" + sql.replace("'", "''") + "'"
-
-
 def _protect_tables() -> None:
     op.execute(
         """
@@ -178,8 +173,11 @@ def _protect_tables() -> None:
             f"CREATE POLICY {table}_tenant_isolation ON {table} "
             f"USING ({_TENANT_EXPR}) WITH CHECK ({_TENANT_EXPR})"
         )
-    op.execute(f"REVOKE UPDATE, DELETE, TRUNCATE ON {table_list} FROM PUBLIC")
-    op.execute(_grant_if_role_exists(f"GRANT SELECT, INSERT ON {table_list} TO {{role}}"))
+    op.execute(f"REVOKE ALL ON {table_list} FROM PUBLIC")
+    op.execute(f"REVOKE ALL ON {table_list} FROM {', '.join(_APP_ROLES)}")
+    for privileges, tables, role in _GRANTS:
+        # GRANT direto: falha alto se o role da 0002 faltar.
+        op.execute(f"GRANT {privileges} ON {tables} TO {role}")
 
 
 def upgrade() -> None:
@@ -193,15 +191,17 @@ def downgrade() -> None:
     for table in _TABLES:
         op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
-    for table in ("report_reviews", "report_versions"):
+    # reporting_periods também: um período órfão ainda é registro do tenant.
+    for table in _TABLES:
         query = f"SELECT EXISTS (SELECT 1 FROM {table})"  # noqa: S608 -- nome fixo de _TABLES
         has_rows = op.get_bind().execute(sa.text(query))
         if has_rows.scalar_one():
             message = (
                 f"downgrade recusado: {table} contém linhas e é append-only; "
-                "o downgrade destruiria registros de revisão."
+                "o downgrade destruiria registros de relatório."
             )
             raise RuntimeError(message)
+    op.execute(f"REVOKE ALL ON {', '.join(_TABLES)} FROM {', '.join(_APP_ROLES)}")
     for table in reversed(_TABLES):
         op.execute(f"DROP POLICY {table}_tenant_isolation ON {table}")
         op.execute(f"DROP TRIGGER trg_{table}_no_truncate ON {table}")

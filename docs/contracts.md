@@ -75,6 +75,7 @@ O mapa completo está na [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestra
 - Cada versão é também um evento `activity_record` no ledger, com `supersedes` apontando para o evento da versão anterior. Cada revisão gera `user_confirmation` (`text_approved`) ou `user_correction` (`changes_requested`, com `supersedes` para o evento da versão revisada).
 - `POST /reports/{id}/review`: o domínio (`review_version`) decide; versão que não é a atual → `VersionConflictError` → 409, sem gravar nada. `correction` (só com `changes_requested`) vira `ReportCorrection` → versão N+1; a versão revisada é preservada e a aprovação dela não vale para a nova.
 - Citações são conferidas no ledger (mesmo tenant e projeto); `formal_hours_event_ids` só aceitam `formal_hours_declared`.
-- Identidade do revisor: headers `X-Basho-User-Id`/`X-Basho-Role`, **placeholder forjável** até existir autenticação.
+- Identidade do revisor (placeholder até #47): headers `X-Basho-User-Id`/`X-Basho-Role` só valem com `X-Basho-Identity-Secret` igual a `REVIEWER_IDENTITY_SECRET` (segredo do BFF, tempo constante); sem segredo configurado → 503. Eventos de revisão gravam `identity_verified: false`.
+- Privilégios: `basho_worker` cria versões, mas só **lê** `report_reviews` (revisão é ação formal); `basho_api` lê e insere nas três tabelas.
 
 Ainda previsto (dados): persistência de `agent_runs`.

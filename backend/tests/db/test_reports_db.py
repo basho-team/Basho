@@ -33,7 +33,6 @@ MANAGER = UUID("55555555-5555-4555-8555-555555555555")
 PENDING_CLAIM = 3
 REPORT_TABLES = ("reporting_periods", "report_versions", "report_reviews")
 APPROVE = ReviewIn(decision=ReviewDecision.TEXT_APPROVED)
-RLS_ROLE = "basho_test_rls"
 
 
 def _correction(v1: ReportVersionOut) -> ReviewIn:
@@ -72,33 +71,11 @@ async def _get(factory: Factory, tenant_id: UUID, version_id: UUID) -> ReportVer
 
 
 async def _count_reviews(factory: Factory, tenant_id: UUID) -> int:
-    # Filtro explícito: o usuário dos testes é superuser e ignora a RLS.
     async with tenant_session(factory, tenant_id) as session:
         result = await session.execute(
             text("SELECT count(*) FROM report_reviews WHERE tenant_id = :t"), {"t": tenant_id}
         )
         return int(result.scalar_one())
-
-
-@pytest.fixture
-async def rls_role(session_factory: Factory) -> str:
-    """Role sem privilégios especiais para exercitar a RLS.
-
-    O usuário dos testes é superuser e ignora RLS mesmo com FORCE. Até a #21 trazer
-    `basho_api`, os testes assumem este role de teste com ``SET LOCAL ROLE``.
-    """
-    async with session_factory() as session, session.begin():
-        await session.execute(
-            text(
-                "DO $$ BEGIN IF NOT EXISTS "  # noqa: S608 -- nome de role constante
-                f"(SELECT 1 FROM pg_roles WHERE rolname = '{RLS_ROLE}') "
-                f"THEN CREATE ROLE {RLS_ROLE} NOLOGIN; END IF; END $$"
-            )
-        )
-        await session.execute(
-            text(f"GRANT SELECT, INSERT ON {', '.join(REPORT_TABLES)} TO {RLS_ROLE}")
-        )
-    return RLS_ROLE
 
 
 async def _new_report(factory: Factory) -> tuple[UUID, ReportVersionOut]:
@@ -304,33 +281,28 @@ async def test_formal_hours_must_reference_formal_hours_event(session_factory: F
     assert created.version.draft.formal_hours_event_ids == (hours.id,)
 
 
-async def test_other_tenant_cannot_see_report(session_factory: Factory, rls_role: str) -> None:
-    # Arrange
+async def test_other_tenant_cannot_see_report(session_factory: Factory) -> None:
+    # Arrange (session_factory = login de basho_api, sujeito à RLS)
     tenant_id, v1 = await _new_report(session_factory)
     other_tenant = uuid4()
 
     # Act / Assert: o serviço filtra por tenant...
     with pytest.raises(ReportNotFoundError):
         await _get(session_factory, other_tenant, v1.version.id)
-    # ...e a RLS esconde as linhas de outro tenant e sem tenant definido
+    # ...e a RLS esconde as linhas de outro tenant e sem tenant definido, mesmo sem WHERE
     for table in REPORT_TABLES:
         async with tenant_session(session_factory, other_tenant) as session:
-            await session.execute(text(f"SET LOCAL ROLE {rls_role}"))
             rows = await session.execute(text(f"SELECT count(*) FROM {table}"))  # noqa: S608
             assert rows.scalar_one() == 0
     async with tenant_session(session_factory, tenant_id) as session:
-        await session.execute(text(f"SET LOCAL ROLE {rls_role}"))
         own = await session.execute(text("SELECT count(*) FROM report_versions"))
         assert own.scalar_one() == 1
     async with session_factory() as session, session.begin():
-        await session.execute(text(f"SET LOCAL ROLE {rls_role}"))
         no_tenant = await session.execute(text("SELECT count(*) FROM report_versions"))
         assert no_tenant.scalar_one() == 0
 
 
-async def test_rls_rejects_insert_for_another_tenant(
-    session_factory: Factory, rls_role: str
-) -> None:
+async def test_rls_rejects_insert_for_another_tenant(session_factory: Factory) -> None:
     tenant_id, other_tenant = uuid4(), uuid4()
     insert = (
         "INSERT INTO reporting_periods (id, tenant_id, start_date, end_date, timezone, "
@@ -340,14 +312,47 @@ async def test_rls_rejects_insert_for_another_tenant(
 
     with pytest.raises(DBAPIError, match="row-level security"):
         async with tenant_session(session_factory, tenant_id) as session:
-            await session.execute(text(f"SET LOCAL ROLE {rls_role}"))
             await session.execute(text(insert), {"t": other_tenant})
+
+
+async def test_worker_creates_versions_but_cannot_insert_review(
+    worker_session_factory: Factory,
+) -> None:
+    # Arrange: o worker (processo do agente) grava a v1
+    tenant_id, project_id = fresh_ids()
+    async with tenant_session(worker_session_factory, tenant_id) as session:
+        _, v1 = await seed_report(session, tenant_id, project_id)
+
+    # Act / Assert: revisão é ação formal, só pelo endpoint humano (ADR-0005)
+    with pytest.raises(DBAPIError, match="permission denied"):
+        async with tenant_session(worker_session_factory, tenant_id) as session:
+            await ReportService(session).review(
+                tenant_id,
+                v1.version.id,
+                APPROVE,
+                reviewer_id=MANAGER,
+                reviewer_role=ReviewerRole.MANAGER,
+            )
+
+
+@pytest.mark.parametrize("table", REPORT_TABLES)
+@pytest.mark.parametrize(
+    "statement", ["UPDATE {t} SET tenant_id = tenant_id", "DELETE FROM {t}", "TRUNCATE {t}"]
+)
+async def test_app_role_has_no_update_delete_or_truncate(
+    session_factory: Factory, table: str, statement: str
+) -> None:
+    tenant_id, _ = await _new_report(session_factory)
+
+    with pytest.raises(DBAPIError, match="permission denied"):
+        async with tenant_session(session_factory, tenant_id) as session:
+            await session.execute(text(statement.format(t=table)))
 
 
 @pytest.mark.parametrize("table", REPORT_TABLES)
 @pytest.mark.parametrize("statement", ["UPDATE {t} SET tenant_id = tenant_id", "DELETE FROM {t}"])
-async def test_update_and_delete_are_rejected_by_trigger(
-    session_factory: Factory, table: str, statement: str
+async def test_update_and_delete_are_rejected_by_trigger_even_for_owner(
+    session_factory: Factory, owner_session_factory: Factory, table: str, statement: str
 ) -> None:
     # Arrange: uma revisão garante linha nas três tabelas
     tenant_id, v1 = await _new_report(session_factory)
@@ -355,12 +360,14 @@ async def test_update_and_delete_are_rejected_by_trigger(
 
     # Act / Assert
     with pytest.raises(DBAPIError, match="append-only"):
-        async with tenant_session(session_factory, tenant_id) as session:
+        async with tenant_session(owner_session_factory, tenant_id) as session:
             await session.execute(text(statement.format(t=table)))
 
 
 @pytest.mark.parametrize("table", REPORT_TABLES)
-async def test_truncate_is_rejected_by_trigger(session_factory: Factory, table: str) -> None:
-    async with session_factory() as session, session.begin():
+async def test_truncate_is_rejected_by_trigger_even_for_owner(
+    owner_session_factory: Factory, table: str
+) -> None:
+    async with owner_session_factory() as session, session.begin():
         with pytest.raises(DBAPIError, match="append-only"):
             await session.execute(text(f"TRUNCATE {table} CASCADE"))

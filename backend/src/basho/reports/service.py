@@ -244,6 +244,8 @@ class ReportService:
                     "content_hash": digest,
                     "draft": draft,
                     "change": change,
+                    # Versão de correção humana: identidade afirmada pelo BFF (placeholder).
+                    **({"identity_verified": False} if source is EventSource.USER else {}),
                 },
                 supersedes=previous_event_id,
                 is_synthetic=version.is_synthetic,
@@ -362,6 +364,9 @@ class ReportService:
                     "decision": review.decision.value,
                     "comment": review.comment,
                     "new_version_id": None if new_version_id is None else str(new_version_id),
+                    # Identidade afirmada pelo BFF, não autenticada aqui (placeholder até a
+                    # auth real): o registro formal deixa isso explícito.
+                    "identity_verified": False,
                 },
                 supersedes=None if approved else row.evidence_event_id,
                 is_synthetic=row.is_synthetic,
