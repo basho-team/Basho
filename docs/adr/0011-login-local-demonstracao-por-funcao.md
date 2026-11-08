@@ -38,3 +38,15 @@ O caminho opcional da API usa identidade de sessão com mapeamento explícito pa
 - Next.js: guias locais de Authentication e Authentication with Cache Components da versão instalada.
 - [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 - [Node.js crypto](https://nodejs.org/api/crypto.html).
+
+## Atualização (2026-11-08): entrada rápida opcional
+
+Para a demonstração, `BASHO_DEMO_OPEN_ACCESS=true` habilita `POST /api/auth/demo`: um clique na conta
+fictícia cria a sessão **sem senha**. É **desligada por padrão**, só aceita as contas do cadastro
+sintético, mantém a checagem de origem, e a função continua vindo do cadastro (o cliente não escolhe).
+Quem alcança o site entra com qualquer função, então vale só com dado sintético.
+
+Com `BASHO_DEMO_SESSION_SECRET` (32+ caracteres) a sessão é um token assinado por HMAC, sem estado, para
+ambiente serverless sem disco compartilhado. Troca-se a revogação no servidor por independência de
+armazenamento: o logout apaga o cookie e o token vale até expirar (4 h). Sem o segredo, segue a sessão
+em arquivo, revogável, do corte original.

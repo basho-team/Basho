@@ -38,7 +38,23 @@ function useLoginForm() {
     finally { setPending(false); }
   }
 
-  return { email, setEmail, password, setPassword, role, setRole, message, pending, submit };
+  /** Entrada rápida (opt-in no servidor): um clique na conta cria a sessão, sem senha. */
+  async function quickLogin(account: (typeof DEMO_ACCOUNTS)[number]) {
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/demo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: account.id }),
+      });
+      const result: { message?: string } = await response.json();
+      if (!response.ok) { setMessage(result.message ?? "Não foi possível entrar."); return; }
+      window.location.assign(ROLE_HOME[account.role]);
+    } catch { setMessage("Não foi possível conectar. Tente novamente."); }
+    finally { setPending(false); }
+  }
+
+  return { email, setEmail, password, setPassword, role, setRole, message, pending, submit, quickLogin };
 }
 
 type LoginState = ReturnType<typeof useLoginForm>;
@@ -85,25 +101,32 @@ function LoginFields({ state }: { state: LoginState }) {
   </>;
 }
 
-function DemoAccounts({ state }: { state: LoginState }) {
-  const { setEmail, setRole } = state;
-  return (          <details className="mt-8 border-t pt-5 text-sm">
-            <summary className="cursor-pointer text-muted-foreground">Contas disponíveis para demonstração</summary>
+function DemoAccounts({ state, openAccess }: { state: LoginState; openAccess: boolean }) {
+  const { setEmail, setRole, quickLogin, pending } = state;
+  return (          <details className="mt-8 border-t pt-5 text-sm" open={openAccess}>
+            <summary className="cursor-pointer text-muted-foreground">
+              {openAccess ? "Entrar com uma conta de demonstração" : "Contas disponíveis para demonstração"}
+            </summary>
             <div className="mt-3 grid gap-2">
               {DEMO_ACCOUNTS.map(account => {
                 const Icon = ICONS[account.role];
-                return <button key={account.id} type="button" onClick={() => { setEmail(account.email); setRole(account.role); }}
+                return <button key={account.id} type="button" disabled={pending}
+                  onClick={() => { if (openAccess) void quickLogin(account); else { setEmail(account.email); setRole(account.role); } }}
                   className="flex items-center gap-3 rounded-lg border bg-card p-3 text-left outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/40">
                   <Icon className="size-4 text-primary" aria-hidden />
                   <span><span className="block font-medium">{account.name}</span><span className="text-xs text-muted-foreground">{account.email} · {ROLE_LABELS[account.role]}</span></span>
                 </button>;
               })}
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">Use a senha local fornecida para esta demonstração. A função deve corresponder à conta.</p>
+            <p className="mt-3 text-xs text-muted-foreground">
+              {openAccess
+                ? "Clique em uma conta para entrar: modo de demonstração com dados fictícios, sem senha."
+                : "Use a senha local fornecida para esta demonstração. A função deve corresponder à conta."}
+            </p>
           </details>);
 }
 
-export function LoginForm() {
+export function LoginForm({ openAccess = false }: { openAccess?: boolean }) {
   const state = useLoginForm();
   const { role, message, pending, submit } = state;
   return (
@@ -123,7 +146,7 @@ export function LoginForm() {
               {pending ? "Entrando…" : "Entrar no Basho"} <ArrowRight className="size-4" aria-hidden />
             </Button>
           </form>
-          <DemoAccounts state={state} />
+          <DemoAccounts state={state} openAccess={openAccess} />
         </div>
       </section>
     </div>
