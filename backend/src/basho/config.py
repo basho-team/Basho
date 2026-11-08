@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     featherless_base_url: AnyHttpUrl
     checker_model: str
     github_token: SecretStr
+    google_service_account_json: SecretStr | None = None
+    """Chave JSON da service account (conteúdo ou caminho do arquivo): publica no Drive (ADR-0010).
+    O usuário compartilha a pasta com o e-mail dela. Vazio = Drive indisponível."""
+    notion_token: SecretStr | None = None
+    """Token da integração interna do Notion. Vazio = Notion indisponível."""
     tenant_id: UUID
     # Segredo server-to-server do BFF que repassa a identidade do revisor (#39). Sem ele,
     # endpoints formais de revisão ficam fechados (503). Placeholder até a auth real.
