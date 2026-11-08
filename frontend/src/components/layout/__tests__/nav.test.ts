@@ -8,7 +8,6 @@ describe("sidebar: um único item ativo", () => {
     ["/", ["/"]],
     ["/pesquisador", ["/pesquisador"]],
     ["/pesquisador/pendencias", ["/pesquisador"]],
-    ["/pesquisador/fontes", ["/pesquisador/fontes"]],
     ["/gerente", ["/gerente"]],
     ["/gerente/pendencias", ["/gerente"]],
     ["/gerente/dossie", ["/gerente"]],

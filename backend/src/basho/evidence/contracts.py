@@ -46,6 +46,28 @@ class EventSource(StrEnum):
     SYSTEM = "system"
 
 
+EXTERNAL_SOURCES: tuple[EventSource, ...] = (
+    EventSource.GITHUB,
+    EventSource.NOTION,
+    EventSource.GOOGLE_DRIVE,
+)
+"""Fontes externas lidas pela conexão da organização (ADR-0007/0012), na ordem de exibição."""
+
+
+class SourceSummary(BaseModel):
+    """O que uma fonte externa já trouxe para o projeto (só contagens e datas, sem conteúdo)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source: EventSource
+    events: int
+    documents: int
+    """Documentos ou itens distintos (doc_id; para o GitHub, sha/PR)."""
+    last_seen_at: datetime | None
+    scopes: list[str]
+    """Repositórios observados (só GitHub); pastas e databases ficam na configuração."""
+
+
 FORMAL_DATA_KINDS: frozenset[EventKind] = frozenset(
     {EventKind.FORMAL_HOURS_DECLARED, EventKind.EXPENSE_DECLARED}
 )

@@ -18,11 +18,11 @@ export function ResearcherHome() {
   const mine = reports.data?.filter(report => report.author_id === user.personId) ?? [];
   return (
     <div className="space-y-8">
-      <PageHeader title="Meus relatórios" subtitle={context.data.project.name + " ? " + context.data.period.label} />
-      <Link href="/pesquisador/fontes" className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4 text-sm hover:bg-muted">
-        <span><span className="block font-medium">Conecte suas fontes</span>
-          <span className="text-muted-foreground">GitHub, Drive e Notion: a plataforma lê, escreve o relatório e organiza na pasta BASHO.</span></span>
-        <span className="font-medium text-primary">Abrir →</span>
+      <PageHeader title="Meus relatórios" subtitle={context.data.project.name + " · " + context.data.period.label} />
+      <Link href="/integracoes" className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4 text-sm hover:bg-muted">
+        <span><span className="block font-medium">Fontes da organização</span>
+          <span className="text-muted-foreground">GitHub, Notion e Drive já conectados: veja o que o Basho leu para este projeto.</span></span>
+        <span className="font-medium text-primary">Ver →</span>
       </Link>
       <Section title="Relatórios do período">
         {reports.isPending && <LoadingState />}
@@ -31,7 +31,7 @@ export function ResearcherHome() {
         <div className="grid gap-3 sm:grid-cols-2">
           {mine.map(report => <Card key={report.report_id}>
             <CardHeader><CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              Relatório mensal ? v{report.latest_version} <ReviewStateBadge state={report.review_state} />
+              Relatório mensal · v{report.latest_version} <ReviewStateBadge state={report.review_state} />
             </CardTitle></CardHeader>
             <CardContent><Link href={"/pesquisador/relatorios/" + report.report_id} className="font-medium text-primary underline underline-offset-4">Ler e revisar relatório</Link></CardContent>
           </Card>)}
