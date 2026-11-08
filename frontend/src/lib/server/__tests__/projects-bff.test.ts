@@ -1,3 +1,4 @@
+import { testSession } from "@/test/demo-session";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { IDENTITY_SECRET_HEADER, ROLE_HEADER, USER_ID_HEADER, type BffDeps } from "@/lib/server/bff-core";
 import type { ServerEnv } from "@/lib/server/env";
@@ -22,18 +23,18 @@ beforeEach(() => {
     ],
   };
   fetchMock = vi.fn<typeof fetch>();
-  deps = { env: () => env, fetch: fetchMock, correlationId: () => "bff-test" };
+  deps = { env: () => env, fetch: fetchMock, correlationId: () => "bff-test", session: testSession };
 });
 
 function get(url: string, role = "manager"): Request {
-  return new Request(url, { headers: { "X-Demo-Role": role } });
+  return new Request(url, { headers: { "X-Demo-Role": role, "X-Test-Session": role } });
 }
 
-function post(body: unknown, role = "researcher", headers: Record<string, string> = {}): Request {
+function post(body: unknown, role = "manager", headers: Record<string, string> = {}): Request {
   return new Request("http://bff.test/api/bff/x", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json", Origin: "http://bff.test", "X-Demo-Role": role, ...headers },
+    headers: { "Content-Type": "application/json", Origin: "http://bff.test", "X-Demo-Role": role, "X-Test-Session": role, ...headers },
   });
 }
 
@@ -121,7 +122,7 @@ describe("BFF: resposta a pendência", () => {
     const call = sent();
     expect(call.url).toBe(`${BACKEND}/api/v1/pending/${PENDING_OPEN_ID}/answer`);
     expect(call.body).toEqual({ answer: "12 horas, planilha de outubro." });
-    expect(call.headers.get(USER_ID_HEADER)).toBe(RESEARCHER_ID);
+    expect(call.headers.get(USER_ID_HEADER)).toBe(MANAGER_ID);
   });
 
   test.each([
@@ -219,4 +220,12 @@ describe("BFF: aprovação formal", () => {
     expect(await res.json()).toMatchObject({ code: "IDENTITY_UNAVAILABLE" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
+
+test("pesquisador não ganha acesso a dossiê ou pendências forjando header de gerente", async () => {
+  const request = new Request("http://bff.test/x", { headers: { "X-Test-Session": "researcher", "X-Demo-Role": "manager" } });
+  expect((await getDossier(PROJECT_ID, request, deps)).status).toBe(403);
+  expect((await listPending(PROJECT_ID, request, deps)).status).toBe(403);
+  expect((await postAnswer(PENDING_OPEN_ID, post({ answer: "resposta válida" }, "researcher"), deps)).status).toBe(403);
+  expect(fetchMock).not.toHaveBeenCalled();
 });

@@ -41,17 +41,17 @@ function versionConflict(body: unknown, cid: string): Response {
   return errorResponse(409, BffErrorCode.versionConflict, MESSAGES.conflict, cid, { extra });
 }
 
-/** GET de uma versão de relatório, com a identidade do papel declarado (`X-Demo-Role`). */
+/** GET de uma versão de relatório, com a identidade da sessão validada no servidor. */
 export async function getReportVersion(rawVersionId: string, request: Request, deps: BffDeps = defaultDeps): Promise<Response> {
   const cid = deps.correlationId();
   const versionId = UuidSchema.safeParse(rawVersionId);
   if (!versionId.success) return errorResponse(400, BffErrorCode.invalidRequest, COMMON_MESSAGES.invalidRequest, cid);
   const gate = openGate(deps, cid, ROUTE.unavailableCode, MESSAGES.unavailable);
   if (gate instanceof Response) return gate;
-  const identity = identityFromRole(request, gate.env);
+  const identity = await identityFromRole(request, gate.env, deps);
   if (!identity) return errorResponse(403, BffErrorCode.forbidden, COMMON_MESSAGES.noRole, cid);
 
-  return forward(deps, gate, {
+  const response = await forward(deps, gate, {
     ...ROUTE,
     method: "GET",
     path: `/reports/${versionId.data}`,
@@ -59,6 +59,13 @@ export async function getReportVersion(rawVersionId: string, request: Request, d
     okStatus: 200,
     okSchema: ApiReportVersionOutSchema,
   });
+  if (response.ok && identity.role === "researcher") {
+    const report = ApiReportVersionOutSchema.parse(await response.clone().json());
+    if (report.version.draft.researcher_id !== identity.userId) {
+      return errorResponse(403, BffErrorCode.forbidden, MESSAGES.forbidden, cid);
+    }
+  }
+  return response;
 }
 
 /**
@@ -77,7 +84,7 @@ export async function postReview(rawVersionId: string, request: Request, deps: B
   if (gate instanceof Response) return gate;
 
   const { reviewer_id, role, ...review } = body.data;
-  const identity = identityFromPair(gate.env, reviewer_id, role);
+  const identity = await identityFromPair(request, gate.env, reviewer_id, role, deps);
   if (!identity) return errorResponse(403, BffErrorCode.forbidden, MESSAGES.forbidden, cid);
 
   return forward(deps, gate, {

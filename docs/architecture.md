@@ -154,6 +154,25 @@ docker-compose.yml  Postgres local
 .env.example
 ```
 
+## 9.1 Publicação em Drive e Notion (ADR-0010, proposta)
+
+O usuário cola um link com permissão de edição (pasta do Drive, página do Notion, repositório do GitHub) e o Basho passa a gerar e publicar os relatórios numa pasta `BASHO`, **sem aprovação de rotina**.
+
+```
+link colado ──► parse_link (só extrai o ID) ──► verificação de acesso ──► project_links (autorização do tenant)
+                                                                                  │
+Maker ─► Checker ─► artefato verified ──► enqueue ──► publications (fila) ──► worker ──► Drive: <pasta>/BASHO/<relatório>
+                                                                                      └──► Notion: <página>/BASHO/<relatório>
+```
+
+- A publicação é um **passo determinístico do worker depois do Checker**, não uma tool do agente: o agente continua sem tool `formal` nem de escrita externa ([ADR-0005](adr/0005-gates-de-permissao-e-aprovacao-humana.md)).
+- Só se publica em link **ativo** cadastrado por um gerente; credenciais do Basho (service account do Google, token do Notion) ficam em variáveis de ambiente ([ADR-0006](adr/0006-seguranca-rls-lgpd-prompt-injection.md)). O usuário precisa compartilhar a pasta/página com a conta do Basho: um link "qualquer um edita" não autentica chamadas de API.
+- Idempotente: unicidade (tenant, link, artefato, tipo) e busca por nome no destino antes de criar. Falha transitória volta à fila com backoff.
+- Aprovação formal (`approved`/`rejected`) segue existindo e continua só do gerente; deixa de ser pré-requisito para publicar documento. O que falta ou diverge vira pendência e aparece no documento.
+
 ## 10. Recorte do MVP
 
 Ver [ADR-0007](adr/0007-recorte-mvp-hackathon.md).
+
+
+> **Demonstração local, proposta:** a [ADR-0011](adr/0011-login-local-demonstracao-por-funcao.md) documenta o login solicitado com contas sintéticas, sessões revogáveis e acesso por função no Next. Não substitui a autenticação de produção nem altera as decisões aceitas de isolamento, ledger e aprovação humana.

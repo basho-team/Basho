@@ -18,6 +18,8 @@ preso em `running` após queda do processo não é recuperado automaticamente (b
 from __future__ import annotations
 
 import asyncio
+import selectors
+import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -61,7 +63,9 @@ from basho.connectors.github import (
     build_github_tools,
 )
 from basho.db import tenant_session
+from basho.evidence.contracts import ArtifactStatus
 from basho.logging import get_logger
+from basho.publishing import IntegrationRegistry, PublicationWorker, PublishingService
 
 BACKOFF_BASE_SECONDS = 5
 BACKOFF_MAX_SECONDS = 300
@@ -87,6 +91,16 @@ def github_wiring(settings: Settings, http_client: httpx.AsyncClient) -> GithubW
     """
     token = settings.github_token
     if not token.get_secret_value().strip() or not settings.github_project_repos:
+        return None
+    repos = {project: RepoRef(name) for project, name in settings.github_project_repos.items()}
+    return GithubWiring(client=GithubClient(token=token, http_client=http_client), repos=repos)
+
+
+def github_client_wiring(settings: Settings, http_client: httpx.AsyncClient) -> GithubWiring | None:
+    """GitHub real sempre que há token; o repositório vem do link do projeto (ADR-0010) ou do
+    mapa `GITHUB_PROJECT_REPOS` (legado, tem precedência apenas se não houver link)."""
+    token = settings.github_token
+    if not token.get_secret_value().strip():
         return None
     repos = {project: RepoRef(name) for project, name in settings.github_project_repos.items()}
     return GithubWiring(client=GithubClient(token=token, http_client=http_client), repos=repos)
@@ -144,6 +158,7 @@ class Worker:
         self._verifier = verifier
         self._config = config
         self._clock = clock
+        self._repos: dict[UUID, RepoRef | None] = {}
 
     async def process_one(self) -> UUID | None:
         """Processa um run liberado; `None` se a fila estiver vazia."""
@@ -165,6 +180,7 @@ class Worker:
             error = RunError(code=INVALID_TASK, message="tarefa inválida", retryable=False)
             await self._fail(stored, error, MakerResult(MakerStatus.FAILED, (), 0))
             return stored.run.id
+        self._repos[stored.project_id] = await self._repo_for(stored.project_id)
         sync_error = await self._sync_github(stored)
         if sync_error is not None:
             await self._fail(stored, sync_error, MakerResult(MakerStatus.FAILED, (), 0))
@@ -218,13 +234,33 @@ class Worker:
             settings=self._config.model,
         )
 
+    def _current_repo(self, project_id: UUID) -> RepoRef | None:
+        """Repositório resolvido para o run em andamento (link ou mapa de configuração)."""
+        if project_id in self._repos:
+            return self._repos[project_id]
+        return self._config.repo_for(project_id)
+
+    async def _repo_for(self, project_id: UUID) -> RepoRef | None:
+        """Repositório do projeto: link GitHub autorizado (ADR-0010) ou o mapa de configuração."""
+        if self._config.github is None:
+            return None
+        tenant_id = self._config.tenant_id
+        try:
+            async with tenant_session(self._factory, tenant_id) as session:
+                name = await PublishingService(session).github_repo(tenant_id, project_id)
+            if name is not None:
+                return RepoRef(name)
+        except Exception as exc:  # sem a tabela/valor inválido: cai no mapa, sem derrubar o run
+            logger.warning("repo_link_lookup_failed", error_type=type(exc).__name__)
+        return self._config.repo_for(project_id)
+
     async def _sync_github(self, stored: StoredRun) -> RunError | None:
         """Ingere commits/PRs do repositório do projeto no ledger antes do Maker (#7).
 
         Transação curta e própria (sem LLM); idempotente. Sem repositório configurado, não faz
         nada. Falha do GitHub vira `RunError` com o código estável do conector.
         """
-        repo = self._config.repo_for(stored.project_id)
+        repo = self._current_repo(stored.project_id)
         github = self._config.github
         if repo is None or github is None:
             return None
@@ -260,7 +296,7 @@ class Worker:
             LedgerRecordDraft(internal),
             PendingItemOpen(internal),
         ]
-        repo = self._config.repo_for(project_id)
+        repo = self._current_repo(project_id)
         github = self._config.github
         if repo is not None and github is not None:
             return [*tools, *build_github_tools(github.client, repo)]
@@ -308,6 +344,21 @@ class Worker:
             artifact_status=outcome.status.value,
             calls=len(result.calls),
         )
+        if outcome.status is ArtifactStatus.VERIFIED:
+            await self._enqueue_publications(stored.project_id)
+
+    async def _enqueue_publications(self, project_id: UUID) -> None:
+        """Passo determinístico depois do Checker (ADR-0010): enfileira a publicação nos links
+        autorizados. Nunca derruba um run já concluído; o próximo "publicar" repete."""
+        tenant_id = self._config.tenant_id
+        try:
+            async with tenant_session(self._factory, tenant_id) as session:
+                queued = await PublishingService(session).enqueue(tenant_id, project_id)
+        except Exception as exc:
+            logger.warning("publication_enqueue_failed", error_type=type(exc).__name__)
+            return
+        if queued:
+            logger.info("publications_enqueued", project_id=str(project_id), queued=queued)
 
     async def _fail(self, stored: StoredRun, error: RunError, result: MakerResult) -> AgentRun:
         now = self._clock()
@@ -360,15 +411,21 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
         else None
     )
     github_http = httpx.AsyncClient()
+    factory = create_session_factory(engine)
+    publisher = PublicationWorker(
+        factory=factory,
+        registry=IntegrationRegistry(settings, github_http),
+        tenant_id=settings.tenant_id,
+    )
     worker = Worker(
-        factory=create_session_factory(engine),
+        factory=factory,
         client=client,
         verifier=verifier,
         config=WorkerConfig(
             settings.tenant_id,
             model_settings_from(settings),
             fixtures,
-            github=github_wiring(settings, github_http),
+            github=github_client_wiring(settings, github_http),
         ),
     )
     logger.info("agent_worker_started")
@@ -377,6 +434,8 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
         while True:
             try:
                 processed = await worker.process_one()
+                if processed is None:  # sem run na fila: publica o que já foi verificado
+                    processed = await publisher.process_one()
                 failures = 0
             except Exception as exc:  # banco fora, StaleRunError...: loga e espera, sem morrer
                 failures += 1
@@ -395,7 +454,13 @@ def main() -> None:  # pragma: no cover - processo real
     from basho.logging import configure_logging
 
     configure_logging()
-    asyncio.run(run_forever(get_settings()))
+    if sys.platform == "win32":  # psycopg assíncrono exige SelectorEventLoop (o padrão é Proactor)
+        asyncio.run(
+            run_forever(get_settings()),
+            loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector()),
+        )
+    else:
+        asyncio.run(run_forever(get_settings()))
 
 
 if __name__ == "__main__":  # pragma: no cover
