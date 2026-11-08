@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from basho.evidence.contracts import EventKind, EvidenceEvent, NewEvidenceEvent
+from basho.evidence.contracts import EventKind, EventSource, EvidenceEvent, NewEvidenceEvent
 from basho.evidence.domain.hashing import HASH_VERSION, compute_content_hash
 from basho.evidence.domain.rules import (
     EvidenceNotFoundError,
@@ -69,6 +69,10 @@ class EvidenceService:
     def __init__(self, session: AsyncSession) -> None:
         self._repository = EvidenceRepository(session)
 
+    async def require_session_tenant(self, tenant_id: UUID) -> None:
+        """Falha se a sessão não foi aberta para ``tenant_id`` (``tenant_session``)."""
+        await self._require_session_tenant(tenant_id)
+
     async def _require_session_tenant(self, tenant_id: UUID) -> None:
         """A sessão deve ter sido aberta para o mesmo tenant (``tenant_session``)."""
         if await self._repository.current_tenant_setting() != str(tenant_id):
@@ -104,6 +108,18 @@ class EvidenceService:
             return set()
         found = await self._repository.existing_ids(tenant_id, project_id, sorted(wanted, key=str))
         return wanted - found
+
+    async def existing_source_refs(
+        self, tenant_id: UUID, project_id: UUID, source: EventSource, refs: Iterable[str]
+    ) -> set[str]:
+        """Quais `source_ref` já existem para a origem: base da ingestão idempotente."""
+        await self._require_session_tenant(tenant_id)
+        wanted = sorted(set(refs))
+        if not wanted:
+            return set()
+        return await self._repository.existing_source_refs(
+            tenant_id, project_id, source.value, wanted
+        )
 
     async def query(
         self,
