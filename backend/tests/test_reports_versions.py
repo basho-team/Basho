@@ -238,3 +238,9 @@ def test_version_lineage_invariants() -> None:
         )
     with pytest.raises(ValidationError):
         v1.model_validate({**v1.model_dump(), "claim_ids": v1.claim_ids[:-1]})
+
+
+def test_public_interface_exports_everything_listed() -> None:
+    import basho.reports as reports
+
+    assert all(hasattr(reports, name) for name in reports.__all__)
