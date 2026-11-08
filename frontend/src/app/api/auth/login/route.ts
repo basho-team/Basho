@@ -2,7 +2,7 @@ import { boundedJson } from "@/lib/auth/http";
 import { NextResponse } from "next/server";
 import { LoginSchema, authenticateDemo, consumeLoginAttempt } from "@/lib/auth/login";
 import { authError, createSession, demoLoginEnabled, hasDemoPassword, sameOriginJson, SESSION_COOKIE,
-  SESSION_TTL_SECONDS, sessionStore, sessionToken } from "@/lib/auth/session";
+  SESSION_TTL_SECONDS, sessionStore, sessionToken, publicOrigin } from "@/lib/auth/session";
 
 export async function POST(request: Request): Promise<Response> {
   if (!sameOriginJson(request)) return authError(403, "Origem da solicitação recusada.");
@@ -19,7 +19,7 @@ export async function POST(request: Request): Promise<Response> {
   const response = NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true, sameSite: "lax", path: "/", maxAge: SESSION_TTL_SECONDS,
-    secure: new URL(request.url).protocol === "https:",
+    secure: publicOrigin(request).startsWith("https:"),
   });
   return response;
 }

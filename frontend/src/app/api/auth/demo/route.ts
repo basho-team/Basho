@@ -3,7 +3,7 @@ import { z } from "zod";
 import { boundedJson } from "@/lib/auth/http";
 import { DEMO_ACCOUNTS } from "@/lib/auth/shared";
 import { authError, createSession, openAccessEnabled, sameOriginJson, SESSION_COOKIE,
-  SESSION_TTL_SECONDS, sessionSecret } from "@/lib/auth/session";
+  SESSION_TTL_SECONDS, sessionSecret, publicOrigin } from "@/lib/auth/session";
 
 const BodySchema = z.object({ accountId: z.string().max(40) }).strict();
 
@@ -29,7 +29,7 @@ export async function POST(request: Request): Promise<Response> {
   const response = NextResponse.json({ ok: true, role: account.role }, { headers: { "Cache-Control": "no-store" } });
   response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true, sameSite: "lax", path: "/", maxAge: SESSION_TTL_SECONDS,
-    secure: new URL(request.url).protocol === "https:",
+    secure: publicOrigin(request).startsWith("https:"),
   });
   return response;
 }
