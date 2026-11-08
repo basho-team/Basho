@@ -125,3 +125,22 @@ def test_revised_claim_keeps_its_id() -> None:
     )
     assert v2.claim_ids == v1.claim_ids
     assert v2.change is not None and v2.change.affected_claim_ids == (cid,)
+
+
+def test_same_instant_reviews_resolve_deterministically_regardless_of_input_order() -> None:
+    # Apontado pelo Codex: ordenar só por reviewed_at dependia da ordem de entrada.
+    v1 = first_version()
+    a = review_version(
+        [v1],
+        review_id=UUID(int=1),
+        version_id=v1.id,
+        reviewer_id=RESEARCHER_ANA,
+        reviewer_role=ReviewerRole.RESEARCHER,
+        decision=ReviewDecision.TEXT_APPROVED,
+        reviewed_at=at(1),
+    )
+    b = a.model_copy(update={"id": UUID(int=2), "decision": ReviewDecision.CHANGES_REQUESTED})
+    one = consolidate([ReportInput(versions=(v1,), reviews=(a, b))]).reports[0].researcher
+    two = consolidate([ReportInput(versions=(v1,), reviews=(b, a))]).reports[0].researcher
+    assert one == two
+    assert one.review_id == b.id

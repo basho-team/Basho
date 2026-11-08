@@ -223,7 +223,7 @@ def _role_review(
 ) -> RoleReview:
     own = sorted(
         (r for r in reviews if r.version_id == version_id and r.reviewer_role is role),
-        key=lambda r: r.reviewed_at,
+        key=lambda r: (r.reviewed_at, str(r.id)),  # desempate estável por ID (mesmo instante)
     )
     if not own:
         return RoleReview(state=ReviewState.AWAITING_REVIEW, review_id=None)
