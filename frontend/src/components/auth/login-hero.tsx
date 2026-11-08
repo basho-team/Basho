@@ -167,8 +167,8 @@ export function LoginBackdrop() {
 /** Conteúdo de marca (lado esquerdo, telas largas). O fundo vem de `LoginBackdrop`. */
 export function LoginHero() {
   return (
-    <section className="relative hidden h-dvh flex-col justify-between gap-4 px-12 py-8 text-white lg:sticky lg:top-0 lg:flex xl:px-16">
-      <BashoLogo className="relative" />
+    <section className="relative hidden min-h-dvh flex-col justify-between gap-4 px-12 py-8 text-white lg:sticky lg:top-0 lg:flex xl:px-16">
+      <BashoLogo className="relative shrink-0 gap-2 text-white/90" markClassName="size-6" nameClassName="text-xl" />
 
       <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-5 text-center">
         <div className="mx-auto flex max-w-xl flex-col items-center space-y-3">
@@ -190,7 +190,7 @@ export function LoginHero() {
         <LedgerTicker />
       </div>
 
-      <p className="relative mx-auto max-w-xl text-center text-xs leading-relaxed text-blue-100/50">
+      <p className="relative mx-auto shrink-0 max-w-xl text-center text-xs leading-relaxed text-blue-100/50">
         Apoio à preparação da documentação de incentivos à inovação. O Basho não garante o benefício, não decide o enquadramento e não envia o FORMP&amp;D. Ambiente de demonstração com dados fictícios.
       </p>
     </section>
