@@ -2,9 +2,9 @@
  * Contrato entre o navegador e o BFF (route handlers em `app/api/bff`).
  *
  * Este arquivo é seguro para o cliente: não lê variáveis de ambiente nem contém segredos.
- * A identidade do revisor é escolhida pela troca de papel da demonstração e conferida pelo
- * BFF contra uma lista de revisores configurada no servidor; o segredo que o backend exige
- * nunca passa pelo navegador.
+ * A identidade do revisor é escolhida pela troca de papel da demonstração. O BFF só limita
+ * os pares (revisor, papel) a uma lista do servidor; ele NÃO autentica ninguém (placeholder
+ * até #47). O segredo que o backend exige nunca passa pelo navegador.
  */
 import { z } from "zod";
 

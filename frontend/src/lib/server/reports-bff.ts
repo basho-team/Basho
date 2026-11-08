@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { ApiReportVersionOutSchema, ApiReviewOutSchema } from "@/lib/api/reports";
 import { BffErrorCode, BffReviewRequestSchema } from "@/lib/bff/contract";
 import type { ApiError } from "@/lib/contracts/provisional";
 import { readServerEnv, ServerConfigError, type ServerEnv } from "@/lib/server/env";
@@ -11,6 +12,7 @@ export const IDENTITY_SECRET_HEADER = "X-Basho-Identity-Secret";
 
 const BACKEND_TIMEOUT_MS = 10_000;
 const MAX_BODY_BYTES = 64 * 1024;
+const JSON_CONTENT_TYPE = /^application\/json\s*(;|$)/i;
 const VersionIdSchema = z.uuid();
 const BackendConflictSchema = z.object({ current_version_id: z.uuid() });
 
@@ -29,6 +31,8 @@ export const defaultDeps: BffDeps = {
 /** Mensagens fixas: nada do backend ou da configuração vaza para o navegador. */
 const MESSAGES = {
   invalidRequest: "Requisição inválida.",
+  crossSite: "Requisição de outra origem recusada.",
+  invalidResponse: "Resposta inesperada do servidor do Basho.",
   notFound: "Relatório não encontrado.",
   forbidden: "Este papel não pode revisar este relatório.",
   conflict: "Esta versão não é mais a atual. Recarregue para ver a versão nova.",
@@ -89,14 +93,50 @@ export async function getReportVersion(rawVersionId: string, deps: BffDeps = def
     headers: { Accept: "application/json", "X-Request-Id": cid },
   });
   if (!res) return errorResponse(502, BffErrorCode.backendUnavailable, MESSAGES.backend, cid, { retryable: true });
-  if (res.status === 200) return passthrough(await res.json(), 200);
+  if (res.status === 200) return validated(ApiReportVersionOutSchema, res, 200, cid);
   if (res.status === 404) return errorResponse(404, BffErrorCode.notFound, MESSAGES.notFound, cid);
   return errorResponse(502, BffErrorCode.backendUnavailable, MESSAGES.backend, cid, { retryable: true });
 }
 
+/**
+ * Repassa só o que o contrato conhece: `z.object` descarta campos extras, então um campo
+ * interno que o backend venha a devolver não chega ao navegador.
+ */
+async function validated(schema: z.ZodType, res: Response, status: number, cid: string): Promise<Response> {
+  const parsed = schema.safeParse(await res.json().catch(() => null));
+  if (!parsed.success) {
+    return errorResponse(502, BffErrorCode.invalidResponse, MESSAGES.invalidResponse, cid, { retryable: true });
+  }
+  return passthrough(parsed.data, status);
+}
+
+/**
+ * Proteção contra CSRF na ação formal:
+ * - exige `Content-Type: application/json`, o que força preflight em requisição cross-site
+ *   e barra `<form enctype="text/plain">`;
+ * - recusa `Origin` de outro host e `Sec-Fetch-Site` diferente de `same-origin`.
+ * Clientes sem esses headers (ex.: curl na rede da demo) passam: isto não é autenticação.
+ */
+export function isSameOriginJson(request: Request): boolean {
+  if (!JSON_CONTENT_TYPE.test(request.headers.get("content-type") ?? "")) return false;
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite !== null && fetchSite !== "same-origin") return false;
+  const origin = request.headers.get("origin");
+  if (origin === null) return true;
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? new URL(request.url).host;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
+/** Limite em bytes, checado pelo `Content-Length` antes de ler e de novo depois. */
 async function readJsonBody(request: Request): Promise<unknown> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(declared) || declared > MAX_BODY_BYTES) return undefined;
   const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) return undefined;
+  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return undefined;
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -105,7 +145,7 @@ async function readJsonBody(request: Request): Promise<unknown> {
 }
 
 async function mapReviewResponse(res: Response, cid: string): Promise<Response> {
-  if (res.status === 201) return passthrough(await res.json(), 201);
+  if (res.status === 201) return validated(ApiReviewOutSchema, res, 201, cid);
   if (res.status === 409) {
     const conflict = BackendConflictSchema.safeParse(await res.json().catch(() => null));
     const extra = conflict.success ? { current_version_id: conflict.data.current_version_id } : undefined;
@@ -123,9 +163,14 @@ async function mapReviewResponse(res: Response, cid: string): Promise<Response> 
 
 /**
  * POST de revisão (ação formal, só humano — ADR-0005). O BFF:
- * 1. valida o corpo e o ID da versão;
- * 2. aceita só revisores da lista do servidor, com o papel configurado para eles;
- * 3. injeta os headers de identidade e o segredo, que nunca saem do servidor.
+ * 1. recusa requisição de outra origem (CSRF);
+ * 2. valida o corpo e o ID da versão;
+ * 3. aceita só revisores da lista do servidor, com o papel configurado para eles;
+ * 4. injeta os headers de identidade e o segredo, que nunca saem do servidor.
+ *
+ * ATENÇÃO: o BFF NÃO autentica. Quem alcança o Next escolhe qual revisor da lista quer ser;
+ * a lista só limita os pares possíveis. Placeholder até a auth real (#47); não publique o
+ * deploy sem uma camada de acesso (basic auth, Vercel protection).
  */
 export async function postReview(
   rawVersionId: string,
@@ -133,6 +178,7 @@ export async function postReview(
   deps: BffDeps = defaultDeps,
 ): Promise<Response> {
   const cid = deps.correlationId();
+  if (!isSameOriginJson(request)) return errorResponse(403, BffErrorCode.forbidden, MESSAGES.crossSite, cid);
   const versionId = VersionIdSchema.safeParse(rawVersionId);
   const body = BffReviewRequestSchema.safeParse(await readJsonBody(request));
   if (!versionId.success || !body.success) {

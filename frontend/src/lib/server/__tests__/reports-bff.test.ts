@@ -30,8 +30,12 @@ beforeEach(() => {
   deps = { env: () => env, fetch: fetchMock, correlationId: () => "bff-test" };
 });
 
-function reviewRequest(body: unknown): Request {
-  return new Request("http://bff.test/api/bff/reports/x/review", { method: "POST", body: JSON.stringify(body) });
+function reviewRequest(body: unknown, headers: Record<string, string> = {}): Request {
+  return new Request("http://bff.test/api/bff/reports/x/review", {
+    method: "POST",
+    body: typeof body === "string" ? body : JSON.stringify(body),
+    headers: { "Content-Type": "application/json", Origin: "http://bff.test", "Sec-Fetch-Site": "same-origin", ...headers },
+  });
 }
 
 const approve = { reviewer_id: RESEARCHER_ID, role: "researcher", decision: "text_approved", comment: "Confere." };
@@ -63,6 +67,22 @@ describe("BFF GET /reports/{id}", () => {
     // Assert
     expect(res.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("descarta campos fora do contrato e recusa resposta inválida do backend", async () => {
+    // Arrange
+    const body = versionOut({ id: V2_ID, number: 2, supersedesId: V1_ID, currentId: V2_ID, currentNumber: 2 });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...body, internal_note: "não deve sair" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ version: "quebrado" }));
+
+    // Act
+    const stripped = await getReportVersion(V2_ID, deps);
+    const broken = await getReportVersion(V2_ID, deps);
+
+    // Assert
+    expect(JSON.stringify(await stripped.json())).not.toContain("internal_note");
+    expect(broken.status).toBe(502);
+    expect(await broken.json()).toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
   test("backend fora do ar vira 502 recuperável", async () => {
@@ -128,6 +148,32 @@ describe("BFF POST /reports/{id}/review", () => {
   ])("corpo inválido (%s) devolve 400", async (_label, body) => {
     // Act
     const res = await postReview(V2_ID, reviewRequest(body), deps);
+
+    // Assert
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["form text/plain de outro site", { "Content-Type": "text/plain", Origin: "http://evil.test", "Sec-Fetch-Site": "cross-site" }],
+    ["JSON com Origin de outro host", { Origin: "http://evil.test", "Sec-Fetch-Site": "same-origin" }],
+    ["JSON com Sec-Fetch-Site cross-site", { "Sec-Fetch-Site": "cross-site" }],
+    ["sem Content-Type JSON", { "Content-Type": "text/plain" }],
+  ])("CSRF: %s devolve 403 sem chamar o backend", async (_label, headers) => {
+    // Act
+    const res = await postReview(V2_ID, reviewRequest(approve, headers), deps);
+
+    // Assert
+    expect(res.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("corpo acima de 64 KiB em bytes devolve 400", async () => {
+    // Arrange: 'ç' ocupa 2 bytes, então o texto passa do limite em bytes, não em caracteres.
+    const huge = JSON.stringify({ ...approve, comment: "ç".repeat(40 * 1024) });
+
+    // Act
+    const res = await postReview(V2_ID, reviewRequest(huge), deps);
 
     // Assert
     expect(res.status).toBe(400);
