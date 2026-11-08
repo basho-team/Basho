@@ -14,6 +14,7 @@ Revises: 0001
 Create Date: 2026-11-07
 """
 
+import re
 from collections.abc import Sequence
 
 from alembic import op
@@ -29,40 +30,51 @@ TENANT_PREDICATE = "tenant_id = NULLIF(current_setting('app.tenant_id', true), '
 nenhuma linha visível e nenhum INSERT aceito (fail closed)."""
 
 
+_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
+def _checked(role: str) -> str:
+    """Só constantes deste módulo chegam aqui; ainda assim, recusa identificador inválido."""
+    if not _IDENTIFIER.fullmatch(role):
+        raise ValueError("nome de role inválido")
+    return role
+
+
+_CREATE_ROLE_SQL = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '__ROLE__') THEN
+        CREATE ROLE __ROLE__ NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+            NOREPLICATION NOBYPASSRLS;
+    END IF;
+END
+$$
+"""
+
+_DROP_ROLE_IF_UNUSED_SQL = """
+DO $$
+DECLARE
+    role_oid oid := (SELECT oid FROM pg_roles WHERE rolname = '__ROLE__');
+BEGIN
+    IF role_oid IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refobjid = role_oid)
+       AND NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid = role_oid)
+    THEN
+        DROP ROLE __ROLE__;
+    END IF;
+END
+$$
+"""
+
+
 def _create_role_if_missing(role: str) -> None:
     # Roles são objetos do cluster: podem já existir (outro banco do mesmo servidor).
-    op.execute(
-        f"""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
-                CREATE ROLE {role} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
-                    NOREPLICATION NOBYPASSRLS;
-            END IF;
-        END
-        $$
-        """
-    )
+    op.execute(_CREATE_ROLE_SQL.replace("__ROLE__", _checked(role)))
 
 
 def _drop_role_if_unused(role: str) -> None:
     # Só remove se não restar privilégio/objeto em nenhum banco nem membro de login.
-    op.execute(
-        f"""
-        DO $$
-        DECLARE
-            role_oid oid := (SELECT oid FROM pg_roles WHERE rolname = '{role}');
-        BEGIN
-            IF role_oid IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refobjid = role_oid)
-               AND NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid = role_oid)
-            THEN
-                EXECUTE format('DROP ROLE %I', '{role}');
-            END IF;
-        END
-        $$
-        """
-    )
+    op.execute(_DROP_ROLE_IF_UNUSED_SQL.replace("__ROLE__", _checked(role)))
 
 
 def upgrade() -> None:

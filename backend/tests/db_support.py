@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import NoReturn
 
 import psycopg
-from psycopg import sql
 import pytest
+from psycopg import sql
 from sqlalchemy.engine import URL, make_url
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
