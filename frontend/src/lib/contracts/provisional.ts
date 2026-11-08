@@ -177,7 +177,8 @@ export const RunSchema = z.object({
 });
 
 export const PendingTargetSchema = z.object({
-  type: z.enum(["report", "expense", "finding"]),
+  // `artifact` = artefato do Maker na API real (#5).
+  type: z.enum(["report", "expense", "finding", "artifact"]),
   id: Id,
   label: z.string().min(1),
 });
@@ -187,12 +188,28 @@ export const PendingRequestSchema = z.object({
   target: PendingTargetSchema,
   reason: z.string().min(1),
   evidence_needed: z.string().min(1),
-  requested_by_role: RoleSchema,
+  /** `null` = gerada pelo sistema (veredito do Checker, lacuna do Maker), não por uma pessoa. */
+  requested_by_role: RoleSchema.nullable(),
   assignee_role: RoleSchema,
   assignee_id: Id.nullable(),
   status: z.enum(["open", "answered", "resolved"]),
   response: z.string().nullable(),
   created_at: Timestamp,
+  /**
+   * Tipo da pendência na API real (#5). `approval_required` se resolve pela aprovação formal
+   * do artefato, não por resposta (contrato do #54). Ausente no mock.
+   */
+  kind: z
+    .enum([
+      "missing_justification",
+      "missing_activity_record",
+      "checker_disagreement",
+      "approval_required",
+      "tool_failure",
+      "needs_review",
+    ])
+    .nullable()
+    .optional(),
 });
 
 export const ConsolidationSchema = z.object({

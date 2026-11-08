@@ -2,23 +2,53 @@
  * Fonte de dados real, via BFF (`app/api/bff`). O navegador nunca fala direto com o
  * backend nem conhece o segredo de identidade do revisor.
  *
- * Implementado: relatório (versões e histórico), revisão e correção (#39).
- * O resto falha de forma explícita até o backend publicar o contrato (#5), em vez de
- * fingir dados.
+ * Implementado: relatório (versões e histórico), revisão e correção (#39); pendências,
+ * resposta, aprovação formal e dossiê (#5). Toda chamada declara o papel da demonstração
+ * (`X-Demo-Role`), e o BFF injeta a identidade. O que ainda não tem rota no backend
+ * (contexto, consolidação, fiscal) falha de forma explícita em vez de fingir dados.
  */
 import type { z } from "zod";
+import {
+  ApprovalSchema,
+  DossierSchema,
+  PendingAnswerOutSchema,
+  PendingPageSchema,
+  type ApiPendingItem,
+} from "@/lib/api/projects";
 import { ApiReportVersionOutSchema, ApiReviewOutSchema, type ApiReportVersionOut } from "@/lib/api/reports";
-import { BffErrorCode, bffPaths, type BffReviewRequest, ReviewerRoleSchema } from "@/lib/bff/contract";
-import { ApiErrorSchema, type Role } from "@/lib/contracts/provisional";
-import { toReportDetail, toReview } from "@/lib/data/api-adapters";
-import { DataSourceError, type CorrectionInput, type DataSource, type ReviewInput } from "@/lib/data/source";
+import {
+  BffErrorCode,
+  bffPaths,
+  DEMO_ROLE_HEADER,
+  MAX_PENDING_PAGE,
+  ReviewerRoleSchema,
+  type BffReviewRequest,
+  type ReviewerRole,
+} from "@/lib/bff/contract";
+import { ApiErrorSchema, type PendingRequest, type Role } from "@/lib/contracts/provisional";
+import { toPendingRequest, toReportDetail, toReview } from "@/lib/data/api-adapters";
+import {
+  DataSourceError,
+  type ArtifactDecisionInput,
+  type CorrectionInput,
+  type DataSource,
+  type RespondPendingInput,
+  type ReviewInput,
+} from "@/lib/data/source";
+import { currentDemoRole } from "@/lib/demo/role";
 
 /** Teto de versões percorridas pela cadeia `supersedes_id` (proteção contra ciclo). */
 const MAX_SERIES_LENGTH = 50;
+/** Teto de páginas de pendências lidas de uma vez (10 × 200). */
+const MAX_PENDING_PAGES = 10;
 const UNEXPECTED_RESPONSE = "Resposta inesperada do servidor.";
 
 export interface ApiSourceOptions {
   fetch?: typeof fetch;
+  /** Projeto da demonstração (`NEXT_PUBLIC_BASHO_PROJECT_ID`). */
+  projectId?: string;
+  /** Papel da troca de papel da demo; por padrão, o da rota atual. */
+  currentRole?: () => ReviewerRole | null;
 }
 
 function clientError(code: string, message: string, retryable = false): DataSourceError {
@@ -42,11 +72,14 @@ function reviewerRole(role: Role) {
 
 export function createApiSource(options: ApiSourceOptions = {}): DataSource {
   const doFetch = options.fetch ?? ((input, init) => fetch(input, init));
+  const currentRole = options.currentRole ?? currentDemoRole;
 
   async function request<S extends z.ZodType>(url: string, init: RequestInit, schema: S): Promise<z.output<S>> {
+    const role = currentRole();
+    const headers = { Accept: "application/json", ...(role ? { [DEMO_ROLE_HEADER]: role } : {}), ...init.headers };
     let res: Response;
     try {
-      res = await doFetch(url, { ...init, cache: "no-store", headers: { Accept: "application/json", ...init.headers } });
+      res = await doFetch(url, { ...init, cache: "no-store", headers });
     } catch {
       throw clientError(BffErrorCode.backendUnavailable, "Sem conexão com o servidor. Tente de novo.", true);
     }
@@ -62,12 +95,51 @@ export function createApiSource(options: ApiSourceOptions = {}): DataSource {
 
   const getVersion = (versionId: string) => request(bffPaths.report(versionId), { method: "GET" }, ApiReportVersionOutSchema);
 
-  const postReview = (versionId: string, body: BffReviewRequest) =>
-    request(
-      bffPaths.review(versionId),
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-      ApiReviewOutSchema,
-    );
+  const postJson = <S extends z.ZodType>(url: string, body: unknown, schema: S) =>
+    request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, schema);
+
+  const postReview = (versionId: string, body: BffReviewRequest) => postJson(bffPaths.review(versionId), body, ApiReviewOutSchema);
+
+  function projectId(): string {
+    if (options.projectId) return options.projectId;
+    throw clientError("NOT_CONFIGURED", "Defina NEXT_PUBLIC_BASHO_PROJECT_ID com o projeto da demonstração.");
+  }
+
+  async function listAllPending(): Promise<ApiPendingItem[]> {
+    const pid = projectId();
+    const items: ApiPendingItem[] = [];
+    let offset: number | null = 0;
+    for (let page = 0; offset !== null && page < MAX_PENDING_PAGES; page += 1) {
+      const result: z.output<typeof PendingPageSchema> = await request(
+        bffPaths.pending(pid, { limit: MAX_PENDING_PAGE, offset }),
+        { method: "GET" },
+        PendingPageSchema,
+      );
+      items.push(...result.items);
+      offset = result.next_offset;
+    }
+    return items;
+  }
+
+  /** Pendências do papel, abertas ou respondidas. Quem é o designado vem do backend. */
+  async function listPendingFor(role: Role): Promise<PendingRequest[]> {
+    const items = await listAllPending();
+    return items
+      .map(toPendingRequest)
+      .filter((p): p is PendingRequest => p !== null && p.assignee_role === role && p.status !== "resolved");
+  }
+
+  async function respondPending(input: RespondPendingInput): Promise<PendingRequest> {
+    const out = await postJson(bffPaths.answer(input.requestId), { answer: input.response }, PendingAnswerOutSchema);
+    const mapped = toPendingRequest(out.pending);
+    if (!mapped) throw clientError(BffErrorCode.invalidResponse, UNEXPECTED_RESPONSE);
+    return mapped;
+  }
+
+  const decideArtifact = (input: ArtifactDecisionInput) =>
+    postJson(bffPaths.approval(input.artifactId), { decision: input.decision, comment: input.comment }, ApprovalSchema);
+
+  const getDossier = () => request(bffPaths.dossier(projectId()), { method: "GET" }, DossierSchema);
 
   /** Carrega a série inteira a partir de qualquer versão: a atual e a cadeia `supersedes_id`. */
   async function loadSeries(anyVersionId: string): Promise<ApiReportVersionOut[]> {
@@ -149,7 +221,9 @@ export function createApiSource(options: ApiSourceOptions = {}): DataSource {
     getFiscalPackage: () => notImplemented("getFiscalPackage"),
     recordFiscalDecision: () => notImplemented("recordFiscalDecision"),
     returnPending: () => notImplemented("returnPending"),
-    listPendingFor: () => notImplemented("listPendingFor"),
-    respondPending: () => notImplemented("respondPending"),
+    listPendingFor,
+    respondPending,
+    decideArtifact,
+    getDossier,
   };
 }

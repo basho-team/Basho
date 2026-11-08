@@ -209,7 +209,7 @@ describe("api-source: revisão", () => {
 
   test("operações sem contrato publicado continuam explícitas", async () => {
     // Act
-    const error = await caught(source.listPendingFor("researcher"));
+    const error = await caught(source.getConsolidation("per-1"));
 
     // Assert
     expect(error.error.code).toBe("NOT_IMPLEMENTED");

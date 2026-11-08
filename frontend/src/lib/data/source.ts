@@ -1,3 +1,4 @@
+import type { ArtifactApproval, Dossier } from "@/lib/api/projects";
 import type {
   ApiError,
   Consolidation,
@@ -68,6 +69,13 @@ export interface ReturnPendingInput {
   evidenceNeeded: string;
 }
 
+/** Decisão formal sobre um artefato (só gerente, ADR-0005). */
+export interface ArtifactDecisionInput {
+  artifactId: string;
+  decision: ArtifactApproval["decision"];
+  comment: string | null;
+}
+
 export interface RespondPendingInput {
   requestId: string;
   respondedBy: string;
@@ -94,4 +102,7 @@ export interface DataSource {
   returnPending(input: ReturnPendingInput): Promise<PendingRequest>;
   listPendingFor(role: Role, personId?: string): Promise<PendingRequest[]>;
   respondPending(input: RespondPendingInput): Promise<PendingRequest>;
+  decideArtifact(input: ArtifactDecisionInput): Promise<ArtifactApproval>;
+  /** Dossiê do projeto (#13): artefatos, evidências, verificações e histórico. */
+  getDossier(): Promise<Dossier>;
 }

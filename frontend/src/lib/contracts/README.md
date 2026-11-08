@@ -25,4 +25,11 @@
 - tradução para os tipos desta pasta em `src/lib/data/api-adapters.ts` (só formato, sem regra);
 - extensões feitas aqui para caber o contrato real: seções `technological_challenge | hypothesis | method | uncertainty`, estados `text_approved` e `superseded`, `justification`/`created_at` anuláveis e `ReportDetail.period_label`.
 
-Ainda sem rota no backend: contexto, lista de relatórios, consolidação, fiscal e pendências (#5). Até lá, essas operações devolvem `NOT_IMPLEMENTED`.
+Também ligados ao contrato da #5 (PR #54), sem camada provisória (tipos em `src/lib/api/projects.ts`):
+- pendências (`GET /projects/{id}/pending`, paginado) e resposta (`POST /pending/{id}/answer`);
+- aprovação formal (`POST /artifacts/{id}/approval`, só gerente);
+- dossiê (`GET /projects/{id}/dossier`).
+
+O BFF manda `X-Basho-*` em todas as chamadas, leituras inclusive. O papel vem da rota da tela (`X-Demo-Role`).
+
+Ainda sem rota no backend: contexto, lista de relatórios, consolidação e fiscal. Até lá, essas operações devolvem `NOT_IMPLEMENTED`.

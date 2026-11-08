@@ -6,7 +6,17 @@
  * comentário e data da revisão) fica vazio ou `null`. A UI nunca preenche nada disso.
  */
 import type { ApiReportVersion, ApiReportVersionOut, ApiReviewOut } from "@/lib/api/reports";
-import type { Claim, Gap, ReportDetail, ReportVersion, Review, ReviewState } from "@/lib/contracts/provisional";
+import type { ApiPendingItem } from "@/lib/api/projects";
+import { ReviewerRoleSchema } from "@/lib/bff/contract";
+import type {
+  Claim,
+  Gap,
+  PendingRequest,
+  ReportDetail,
+  ReportVersion,
+  Review,
+  ReviewState,
+} from "@/lib/contracts/provisional";
 
 function formatIsoDate(iso: string): string {
   const [year, month, day] = iso.split("-");
@@ -117,5 +127,27 @@ export function toReview(out: ApiReviewOut): Review {
     decision: review.decision === "text_approved" ? "approve" : "request_changes",
     justification: review.comment ?? null,
     created_at: review.reviewed_at,
+  };
+}
+
+/**
+ * Pendência real (#5) no formato da caixa de pendências. Só papéis humanos do backend
+ * (`researcher`, `manager`); outro valor é descartado em vez de adivinhado.
+ */
+export function toPendingRequest(item: ApiPendingItem): PendingRequest | null {
+  const assignee = ReviewerRoleSchema.safeParse(item.assignee_role);
+  if (!assignee.success) return null;
+  return {
+    id: item.id,
+    target: { type: "artifact", id: item.artifact_id ?? item.id, label: item.title },
+    reason: item.question,
+    evidence_needed: item.question,
+    requested_by_role: null,
+    assignee_role: assignee.data,
+    assignee_id: null,
+    status: item.status,
+    response: item.response,
+    created_at: item.created_at,
+    kind: item.kind,
   };
 }

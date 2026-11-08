@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import type { ArtifactStatus } from "@/lib/api/projects";
 import type { ClaimStatus, FindingSignal, ReviewState, RunStatus } from "@/lib/contracts/provisional";
 
 type Tone = "ok" | "warn" | "danger" | "info" | "muted";
@@ -44,6 +45,21 @@ const RUN: Record<RunStatus, [string, Tone]> = {
   completed: ["Concluído", "ok"],
   failed: ["Falhou", "danger"],
 };
+
+const ARTIFACT: Record<ArtifactStatus, [string, Tone]> = {
+  proposed: ["Proposto", "muted"],
+  draft: ["Rascunho (refazer)", "muted"],
+  verified: ["Verificado", "info"],
+  needs_human: ["Precisa de pessoa", "warn"],
+  needs_review: ["Precisa de revisão", "warn"],
+  approved: ["Aprovado", "ok"],
+  rejected: ["Rejeitado", "danger"],
+};
+
+export function ArtifactStatusBadge({ status }: { status: ArtifactStatus }) {
+  const [label, tone] = ARTIFACT[status];
+  return <ToneBadge tone={tone}>{label}</ToneBadge>;
+}
 
 export function ReviewStateBadge({ state }: { state: ReviewState }) {
   const [label, tone] = REVIEW[state];

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Role, Run } from "@/lib/contracts/provisional";
 import { dataSource, DataSourceError } from "@/lib/data";
 import type {
+  ArtifactDecisionInput,
   ClarificationInput,
   CorrectionInput,
   FiscalDecisionInput,
@@ -23,6 +24,7 @@ export const queryKeys = {
   consolidation: (periodId: string) => [...queryKeys.all, "consolidation", periodId] as const,
   fiscalPackage: (periodId: string) => [...queryKeys.all, "fiscal", periodId] as const,
   pending: (role: Role, personId?: string) => [...queryKeys.all, "pending", role, personId ?? "all"] as const,
+  dossier: () => [...queryKeys.all, "dossier"] as const,
   run: (runId: string) => [...queryKeys.all, "run", runId] as const,
 };
 
@@ -82,6 +84,11 @@ export function isVersionConflict(error: unknown): boolean {
   return error instanceof DataSourceError && error.error.code === "VERSION_CONFLICT";
 }
 
+/** O estado mudou no backend (409): a tela precisa recarregar para mostrar o atual. */
+function isStaleState(error: unknown): boolean {
+  return isVersionConflict(error) || (error instanceof DataSourceError && error.error.code === "STATE_CONFLICT");
+}
+
 /**
  * Toda escrita pode afetar várias telas: invalida tudo do domínio. Num conflito de versão,
  * recarrega também, para a tela mostrar a versão nova.
@@ -92,7 +99,7 @@ function useDomainMutation<TInput, TOutput>(fn: (input: TInput) => Promise<TOutp
     mutationFn: fn,
     onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
     onError: (error) => {
-      if (isVersionConflict(error)) void client.invalidateQueries({ queryKey: queryKeys.all });
+      if (isStaleState(error)) void client.invalidateQueries({ queryKey: queryKeys.all });
     },
   });
 }
@@ -110,3 +117,9 @@ export const useRecordFiscalDecision = () =>
 export const useReturnPending = () => useDomainMutation((i: ReturnPendingInput) => dataSource.returnPending(i));
 export const useRespondPending = () =>
   useDomainMutation((i: RespondPendingInput) => dataSource.respondPending(i));
+export const useDecideArtifact = () =>
+  useDomainMutation((i: ArtifactDecisionInput) => dataSource.decideArtifact(i));
+
+export function useDossier() {
+  return useQuery({ queryKey: queryKeys.dossier(), queryFn: () => dataSource.getDossier() });
+}
