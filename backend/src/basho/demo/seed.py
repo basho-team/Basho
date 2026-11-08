@@ -5,7 +5,8 @@ Grava no ledger, como **dados sintéticos** (`is_synthetic=True`):
 - um registro formal de horas de Bia (origem `formal_system`, RH fictício); Ana fica sem
   registro formal, para a demo mostrar a lacuna;
 - o relatório v1 de Bia, gravado pelo ator `system:demo-seed` (não simula autoria humana;
-  a revisão de Bia é feita na interface).
+  a revisão de Bia é feita na interface);
+- o rascunho automático de Ana (regras, sem LLM; ator `system:auto-draft:regras-v1`).
 Reexecutar não duplica nada (marca `demo:` em `source_ref`).
 """
 
@@ -30,7 +31,7 @@ from basho.demo.context import ANA, BIA, PERIOD, PROJECT_ID
 from basho.evidence import EvidenceService
 from basho.evidence.contracts import Actor, ActorType, EventKind, EventSource, NewEvidenceEvent
 from basho.logging import configure_logging, get_logger
-from basho.reports.service import ReportAlreadyExistsError, ReportService
+from basho.reports.service import ReportAlreadyExistsError, ReportQueryService, ReportService
 
 SEED = Actor(type=ActorType.SYSTEM, id="demo-seed")
 GITHUB = Actor(type=ActorType.SYSTEM, id="demo-seed:github-fictício")
@@ -200,9 +201,17 @@ async def seed() -> dict[str, Any]:
                 report_id = report.version.id
             except ReportAlreadyExistsError as exists:
                 report_id = exists.current_version_id
+            # Ana: rascunho automático (regras, sem LLM) pronto para leitura e confirmação.
+            ana = await ReportQueryService(session).auto_draft(
+                settings.tenant_id, PROJECT_ID, ANA.id, PERIOD
+            )
     finally:
         await engine.dispose()
-    return {"events": len(ids), "bia_report_version_id": str(report_id)}
+    return {
+        "events": len(ids),
+        "bia_report_version_id": str(report_id),
+        "ana_report_version_id": str(ana.version.id),
+    }
 
 
 def main() -> None:

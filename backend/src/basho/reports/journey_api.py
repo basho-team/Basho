@@ -15,6 +15,7 @@ from basho.agent.artifacts import Periodicity, ReportingPeriod, ResearchReportDr
 from basho.agent.verifier import VerificationResult
 from basho.evidence.contracts import EventSource
 from basho.reports.api import NOT_FOUND_DETAIL, Reviewer, _scope, current_reviewer
+from basho.reports.auto_draft import NothingToDraftError
 from basho.reports.consolidation import ManagerConsolidation, consolidate
 from basho.reports.narrative import render_manager_summary
 from basho.reports.schemas import ReportVersionOut
@@ -102,6 +103,28 @@ async def create_report(
     except ReportValidationError as invalid:
         # Mensagens do serviço de criação são fixas e sem dado interno (citações/horas).
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(invalid)) from None
+
+
+@router.post(
+    "/projects/{project_id}/reports/auto-draft",
+    response_model=ReportVersionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def auto_draft(
+    project_id: UUID, period: Period, request: Request, reviewer: CurrentReviewer
+) -> ReportVersionOut:
+    """Gera (por regras, sem LLM) o rascunho do próprio pesquisador; idempotente."""
+    if reviewer.role is not ReviewerRole.RESEARCHER:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "só o pesquisador gera o próprio rascunho")
+    tenant_id = request.app.state.settings.tenant_id
+    try:
+        async with _scope(request) as session:
+            return await ReportQueryService(session).auto_draft(
+                tenant_id, project_id, reviewer.user_id, period
+            )
+    except NothingToDraftError:
+        msg = "nenhuma evidência sua no período para gerar o rascunho"
+        raise HTTPException(status.HTTP_404_NOT_FOUND, msg) from None
 
 
 @router.get("/projects/{project_id}/reports", response_model=list[ReportVersionOut])

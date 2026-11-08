@@ -21,8 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from basho.agent.artifacts import ReportingPeriod, ResearchReportDraft
 from basho.agent.checks import ReportDeterministicChecker
 from basho.agent.verifier import VerificationResult
-from basho.evidence import EvidenceNotFoundError, EvidenceService
+from basho.evidence import MAX_PAGE_SIZE, EvidenceNotFoundError, EvidenceService
 from basho.evidence.contracts import Actor, ActorType, EventKind, EventSource, NewEvidenceEvent
+from basho.reports.auto_draft import AUTO_DRAFT_ACTOR, build_auto_draft
 from basho.reports.consolidation import ReportInput, consolidate
 from basho.reports.corrections import ReportCorrection, apply_correction
 from basho.reports.models import ReportReviewRow, ReportVersionRow
@@ -443,6 +444,19 @@ class ReportQueryService:
         return [
             await self._reports._to_out(series[-1], series) for series in by_researcher.values()
         ]
+
+    async def auto_draft(
+        self, tenant_id: UUID, project_id: UUID, researcher_id: UUID, period: ReportingPeriod
+    ) -> ReportVersionOut:
+        """Rascunho por regras (sem LLM) a partir do ledger; devolve o atual se já existir."""
+        for current in await self.list_current(tenant_id, project_id, period):
+            if current.status.researcher_id == researcher_id:
+                return current
+        events = await self._ledger.query(tenant_id, project_id=project_id, limit=MAX_PAGE_SIZE)
+        draft = build_auto_draft(project_id, researcher_id, period, events)
+        return await self._reports.create_report(
+            tenant_id, draft, actor=AUTO_DRAFT_ACTOR, source=EventSource.SYSTEM, is_synthetic=True
+        )
 
     async def history(self, tenant_id: UUID, version_id: UUID) -> list[ReportVersionOut]:
         await self._reports._require_session_tenant(tenant_id)

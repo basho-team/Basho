@@ -283,3 +283,24 @@ async def test_researcher_cannot_self_declare_formal_hours(client: AsyncClient) 
     )
     assert manager.status_code == 201
     assert manager.json()["payload"]["researcher_id"] == str(ANA)
+
+
+async def test_auto_draft_is_generated_once_and_cites_own_evidence(client: AsyncClient) -> None:
+    project = uuid4()
+    url = f"/api/v1/projects/{project}/reports/auto-draft"
+    assert (await client.post(url, params=Q, json={}, headers=ANA_H)).status_code == 404
+    activity = await _evidence(
+        client,
+        project,
+        kind="activity_record",
+        title="Quantização",
+        description="Aplicação de int8 dinâmico no modelo embarcado.",
+    )
+    first = await client.post(url, params=Q, json={}, headers=ANA_H)
+    assert first.status_code == 201, first.text
+    version = first.json()["version"]
+    assert version["draft"]["claims"][0]["evidence_ids"] == [activity]
+    again = await client.post(url, params=Q, json={}, headers=ANA_H)
+    assert again.json()["version"]["id"] == version["id"]
+    manager = await client.post(url, params=Q, json={}, headers=_who(CARLA, "manager"))
+    assert manager.status_code == 403
