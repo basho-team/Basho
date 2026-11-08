@@ -71,3 +71,33 @@ async def assert_least_privilege(engine: AsyncEngine) -> None:
             "tabelas); use o login da aplicação, membro de basho_api/basho_worker"
         )
         raise UnsafeDatabaseRoleError(message)
+
+
+class DatabaseRoleSeparationError(RuntimeError):
+    """O login não tem o role do processo ou tem também o do outro processo (ADR-0005/0006)."""
+
+
+API_ROLE = "basho_api"
+WORKER_ROLE = "basho_worker"
+
+_MEMBERSHIP_SQL = text(
+    "SELECT pg_has_role(current_user, :required, 'MEMBER'), "
+    "pg_has_role(current_user, :forbidden, 'MEMBER')"
+)
+
+
+async def assert_process_role(engine: AsyncEngine, *, required: str, forbidden: str) -> None:
+    """Falha rápido se o login não for membro de ``required`` ou for membro de ``forbidden``.
+
+    Separa API e worker: um login nos dois grupos daria ao processo do agente as ações formais
+    da API (ex.: ``report_reviews``, ``tool_approval_decisions``). A mensagem não cita o login.
+    """
+    async with engine.connect() as connection:
+        member, overlaps = (
+            await connection.execute(
+                _MEMBERSHIP_SQL, {"required": required, "forbidden": forbidden}
+            )
+        ).one()
+    if not member or overlaps:
+        message = f"DATABASE_URL precisa ser um login membro de {required} e não de {forbidden}"
+        raise DatabaseRoleSeparationError(message)

@@ -34,6 +34,7 @@ APPEND_ONLY_TABLES = [
     "pending_items",
     "pending_answers",
     "artifact_approvals",
+    "agent_calls",
 ]
 # Tabelas de infraestrutura sem dado de tenant: sem RLS e sem privilégio para a app.
 INFRA_TABLES = ["alembic_version"]
