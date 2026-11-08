@@ -164,11 +164,18 @@ export function sessionToken(request: Request): string | undefined {
   return entry?.slice(SESSION_COOKIE.length + 1);
 }
 
-export async function userFromRequest(request: Request): Promise<DemoUser | null> {
+/**
+ * Único caminho de leitura da sessão: proxy, rotas e layout passam por aqui. Ler o arquivo direto
+ * (como o layout fazia) ignorava a sessão assinada e deixava o app em laço de redirecionamento.
+ */
+export async function userFromToken(token: string | undefined): Promise<DemoUser | null> {
   if (!demoLoginEnabled()) return null;
-  const token = sessionToken(request);
   if (token?.startsWith(SIGNED_PREFIX)) return readSignedSession(token, sessionSecret());
   return sessionStore().read(token);
+}
+
+export async function userFromRequest(request: Request): Promise<DemoUser | null> {
+  return userFromToken(sessionToken(request));
 }
 
 export function sameOriginJson(request: Request): boolean {

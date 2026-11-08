@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { readSignedSession, sessionSecret, signSession, SESSION_TTL_SECONDS, userFromRequest } from "../session";
+import { readSignedSession, sessionSecret, signSession, SESSION_TTL_SECONDS, userFromRequest, userFromToken } from "../session";
 
 const SECRET = "s".repeat(40);
 const OTHER = "o".repeat(40);
@@ -78,5 +78,27 @@ describe("userFromRequest com sessão assinada", () => {
   test("não vale com o login desligado", async () => {
     vi.stubEnv("BASHO_DEMO_SESSION_SECRET", SECRET);
     expect(await userFromRequest(request(signSession("rafael", SECRET)))).toBeNull();
+  });
+});
+
+describe("userFromToken (caminho único: proxy, rotas e layout)", () => {
+  test("o layout aceita a sessão assinada; antes ele só lia arquivo e entrava em laço de redirecionamento", async () => {
+    // Arrange
+    vi.stubEnv("BASHO_DEMO_OPEN_ACCESS", "true");
+    vi.stubEnv("BASHO_DEMO_SESSION_SECRET", SECRET);
+
+    // Act
+    const user = await userFromToken(signSession("marina", SECRET));
+
+    // Assert
+    expect(user).toMatchObject({ accountId: "marina", role: "manager" });
+  });
+
+  test("sem token, com token adulterado ou com o login desligado, nega", async () => {
+    vi.stubEnv("BASHO_DEMO_SESSION_SECRET", SECRET);
+    expect(await userFromToken(signSession("marina", SECRET))).toBeNull(); // login desligado
+    vi.stubEnv("BASHO_DEMO_LOGIN_ENABLED", "true");
+    expect(await userFromToken(undefined)).toBeNull();
+    expect(await userFromToken("s1.eyJhIjoibWFyaW5hIn0.falsa")).toBeNull();
   });
 });

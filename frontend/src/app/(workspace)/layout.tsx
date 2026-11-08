@@ -5,11 +5,11 @@ import { SessionProvider } from "@/components/auth/session-provider";
 import { DemoBanner } from "@/components/demo/demo-banner";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { TopBar } from "@/components/layout/top-bar";
-import { demoLoginEnabled, SESSION_COOKIE, sessionStore } from "@/lib/auth/session";
+import { SESSION_COOKIE, userFromToken } from "@/lib/auth/session";
 
 async function Workspace({ children }: { children: React.ReactNode }) {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const user = demoLoginEnabled() ? await sessionStore().read(token) : null;
+  const user = await userFromToken(token);
   if (!user) redirect("/login");
   return (
     <SessionProvider user={user}>
