@@ -32,6 +32,7 @@ from basho.agent.verifier import (
     Verifier,
 )
 from basho.evidence.contracts import (
+    FORMAL_DATA_KINDS,
     Actor,
     ActorType,
     ArtifactStatus,
@@ -51,8 +52,9 @@ INVALID_RESPONSE = "checker_invalid_response"
 REFUSED = "checker_refused"
 TRUNCATED = "checker_truncated"
 INCONSISTENT_VERDICT = "checker_inconsistent_verdict"
-REDACTED_KINDS: frozenset[EventKind] = frozenset({EventKind.FORMAL_HOURS_DECLARED})
-"""Payload formal (horas, pessoas) não vai ao provedor externo (LGPD): só tipo e origem."""
+REDACTED_KINDS: frozenset[EventKind] = FORMAL_DATA_KINDS
+"""Payload formal (horas, dispêndio: pessoas e valores) não vai ao provedor externo (LGPD):
+só tipo e origem. Mesma fonte que o Maker usa (`FORMAL_DATA_KINDS`)."""
 _BLOCKING_SEVERITIES = frozenset({IssueSeverity.BLOCKER, IssueSeverity.MAJOR})
 _ENVELOPE_ESCAPES = {"<": r"\u003c", ">": r"\u003e", "&": r"\u0026"}
 
