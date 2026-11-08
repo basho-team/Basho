@@ -1,8 +1,9 @@
 """Relatórios de pesquisa: versões, correções rastreáveis, revisão e consolidação gerencial.
 
-Domínio puro e determinístico (sem banco, rotas nem LLM). A persistência de `report_versions`
-e `report_reviews` é escopo da #39; os tipos aqui são **proposta** para ratificação de contrato
-(ver `docs/reports-consolidation.md`). Base: `ResearchReportDraft` (ADR-0009, proposta).
+Domínio puro e determinístico (sem banco, rotas nem LLM). A persistência de
+`report_versions` e `report_reviews` (#39) fica em `service`/`repository`/`api`; os tipos
+aqui são **proposta** para ratificação de contrato (ver `docs/reports-consolidation.md`).
+Base: `ResearchReportDraft` (ADR-0009, proposta).
 
 Outros módulos devem importar só daqui (ADR-0001: comunicação via interface pública).
 """
@@ -23,6 +24,15 @@ from basho.reports.corrections import (
     apply_correction,
 )
 from basho.reports.narrative import render_manager_summary
+
+# Persistência (#39): importada por último porque depende dos tipos de domínio acima.
+from basho.reports.service import (
+    ReportAlreadyExistsError,
+    ReportNotFoundError,
+    ReportPersistenceError,
+    ReportService,
+    ReportValidationError,
+)
 from basho.reports.versions import (
     ItemKind,
     ReportReview,
@@ -43,9 +53,14 @@ __all__ = [
     "InvalidCorrectionError",
     "ItemKind",
     "ManagerConsolidation",
+    "ReportAlreadyExistsError",
     "ReportCorrection",
     "ReportInput",
+    "ReportNotFoundError",
+    "ReportPersistenceError",
     "ReportReview",
+    "ReportService",
+    "ReportValidationError",
     "ReportVersion",
     "ReviewDecision",
     "ReviewState",

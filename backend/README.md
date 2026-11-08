@@ -20,6 +20,8 @@ uv run alembic downgrade base    # reverte tudo
 ```
 
 `evidence_events` é append-only (ADR-0003): trigger bloqueia `UPDATE`/`DELETE`/`TRUNCATE`.
+`reporting_periods`, `report_versions` e `report_reviews` (`0003`, #39) seguem o mesmo padrão
+(função `basho_reject_mutation()`) e têm RLS forçada por `app.tenant_id`.
 
 No Windows, o psycopg assíncrono exige `SelectorEventLoop`; o `env.py` e os testes já
 cuidam disso. Ao subir a API localmente no Windows, use `--loop none`.
