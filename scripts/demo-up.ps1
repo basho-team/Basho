@@ -42,7 +42,8 @@ function Stop-Port([int]$port) {
 function Stop-Pids {
     $file = Join-Path $logs "worker.pid"
     if (Test-Path $file) {
-        Get-Content $file | ForEach-Object { Stop-Process -Id ([int]$_) -Force -ErrorAction SilentlyContinue }
+        # `uv run` é só o lançador: encerra a árvore inteira para não deixar o python órfão.
+        Get-Content $file | ForEach-Object { taskkill /PID ([int]$_) /T /F *> $null }
         Remove-Item $file -Force
     }
 }
