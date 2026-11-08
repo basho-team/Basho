@@ -155,3 +155,36 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Login: feixes, anéis, grade e fita do ledger (login-hero.tsx). */
+@keyframes basho-beam {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes basho-ring {
+  0% { transform: scale(0.85); opacity: 0.9; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+@keyframes basho-grid {
+  from { background-position: 0 0; }
+  to { background-position: 0 48px; }
+}
+@keyframes basho-ticker {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+.basho-beam { animation: basho-beam 2.8s linear infinite; stroke-dashoffset: 100; }
+.basho-ring { animation: basho-ring 2.4s ease-out infinite; }
+.basho-grid {
+  background-image:
+    linear-gradient(to right, rgb(129 140 248 / 0.22) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(129 140 248 / 0.22) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: basho-grid 3s linear infinite;
+}
+.basho-ticker { animation: basho-ticker 12s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .basho-beam, .basho-ring, .basho-grid, .basho-ticker { animation: none; }
+  .basho-beam { stroke-dashoffset: 0; stroke-dasharray: none; opacity: 0.5; }
+  .basho-ring { opacity: 0; }
+}

@@ -24,7 +24,7 @@ export function ThemeToggle({ className }: { className?: string }) {
     <div
       role="group"
       aria-label="Aparência"
-      className={cn("inline-flex items-center gap-0.5 rounded-full bg-muted p-0.5 ring-1 ring-border", className)}
+      className={cn("inline-flex items-center gap-1 rounded-full bg-muted p-1 ring-1 ring-border", className)}
     >
       {OPTIONS.map(({ value, label, icon: Icon }) => {
         const selected = preference === value;
@@ -37,11 +37,11 @@ export function ThemeToggle({ className }: { className?: string }) {
             aria-pressed={selected}
             onClick={() => setPreference(value)}
             className={cn(
-              "inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+              "inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
               selected && "bg-card text-foreground shadow-sm ring-1 ring-border",
             )}
           >
-            <Icon className="size-3.5" aria-hidden />
+            <Icon className="size-[18px]" aria-hidden />
           </button>
         );
       })}
