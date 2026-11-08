@@ -23,6 +23,14 @@ Interfaces combinadas na hora 0 para que backend, agente e frontend avancem em p
 - Correção = novo evento `USER_CORRECTION` com `supersedes`; dependentes → `needs_review` (#11).
 - Eventos de agente: `actor.type = agent`, `actor.id ∈ {maker, checker}`, `actor.model` obrigatório. `source = agent` vale se, e somente se, `actor.type = agent`; `source = user` exige `actor.type = user`; dados formais exigem actor user ou system (system só com `formal_system`); `USER_CORRECTION`/`USER_CONFIRMATION` exigem actor e source `user`.
 
+### 1.1 Propagação de correções (#11)
+`basho.evidence.CorrectionPropagation(session)` (transação do chamador, `tenant_session`; roda como `basho_api` ou `basho_worker`):
+- `propagate(tenant_id, correction_event_id) -> PropagationResult(marked, already_marked)`: a correção é qualquer evento com `supersedes`. Todo `activity_record` do mesmo projeto que cita o evento substituído — id em qualquer `draft.**.evidence_ids` ou `draft.**.formal_hours_event_ids` — vai para `needs_review`, e o mesmo vale, transitivamente, para quem cita esse artefato (até `MAX_DEPTH = 10` saltos, sem ciclos). Artefato já substituído por versão nova não é marcado. É idempotente por `(artefato, correção)`: reprocessar não duplica, e uma correção nova marca de novo.
+- Cada transição é um **novo** evento `status_changed` (`source=system`, `actor={type: system, id: "propagation"}`, `source_ref="artifact:<id>"`) com o payload `{artifact_event_id, status: "needs_review", reason: "evidence_superseded", cause_event_id, superseded_event_id, via_event_id, depth}`. Nada é atualizado.
+- `pending_reviews(tenant_id, project_id) -> list[PendingReview]` lista os artefatos cujo **último** `status_changed` é `needs_review` e que não foram substituídos (pendências, #5).
+- `reopen_as_draft(tenant_id, artifact_event_id)`: `needs_review → draft` para o worker (#10) reabrir o ciclo Maker–Checker, com payload `{status: "draft", reason: "reopened_for_maker", cause_event_id, superseded_event_id, previous_status_event_id}`. Só a partir de `needs_review`; aprovar e rejeitar continuam humanos (ADR-0005).
+- **Quem chama:** quem grava a correção (revisão de relatório no #39/#5, correções de usuário) chama `propagate` na mesma transação, ou o worker (#10) consome depois. Transições do mesmo artefato na mesma transação compartilham `created_at`; nesse caso o desempate é por `id`, sem ordem garantida.
+
 ## 2. Tools (ADR-0005)
 - `ToolSpec(name, description, level, input_schema, requires_approval)`; registro falha se faltar `level`.
 - `FORMAL` nunca é dado ao agente (`AGENT_ALLOWED_LEVELS`).
