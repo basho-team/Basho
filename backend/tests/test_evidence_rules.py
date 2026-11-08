@@ -1,5 +1,6 @@
 """Testes unitários das regras de domínio do ledger (sem banco)."""
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -123,6 +124,23 @@ def test_nul_character_anywhere_in_text_is_rejected(overrides: dict[str, Any]) -
     event = make_event(**overrides)
 
     with pytest.raises(EvidenceValidationError, match="U\\+0000"):
+        validate_event_shape(event)
+
+
+NON_JSON_PAYLOADS: list[dict[str, Any]] = [
+    {"id": uuid4()},
+    {"when": datetime(2026, 11, 7, tzinfo=UTC)},
+    {"a": [1, {"b": (1, 2)}]},
+    {"x": float("nan")},
+    {"x": float("inf")},
+]
+
+
+@pytest.mark.parametrize("payload", NON_JSON_PAYLOADS)
+def test_payload_with_non_json_native_types_is_rejected(payload: dict[str, Any]) -> None:
+    event = make_event(payload=payload)
+
+    with pytest.raises(EvidenceValidationError, match="JSON nativos"):
         validate_event_shape(event)
 
 

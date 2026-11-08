@@ -1,5 +1,6 @@
 """Regras de domínio do ledger (funções puras)."""
 
+import math
 from typing import Any
 from uuid import UUID
 
@@ -43,7 +44,22 @@ def _contains_nul(value: Any) -> bool:
     return False
 
 
+def _is_json_native(value: Any) -> bool:
+    """True se o valor só usa tipos JSON nativos (o que é hasheado é o que é gravado)."""
+    if value is None or isinstance(value, str | bool | int):
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, dict):
+        return all(isinstance(key, str) and _is_json_native(item) for key, item in value.items())
+    if isinstance(value, list):
+        return all(_is_json_native(item) for item in value)
+    return False
+
+
 def _validate_text_fields(event: NewEvidenceEvent) -> None:
+    if not _is_json_native(event.payload):
+        raise EvidenceValidationError("payload deve conter apenas tipos JSON nativos")
     actor = event.actor
     if _contains_nul([event.payload, event.source_ref, actor.id, actor.model]):
         raise EvidenceValidationError("texto contém caractere nulo (U+0000)")
