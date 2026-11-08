@@ -53,6 +53,9 @@ Implementado em `basho.agent.checks` e `basho.agent.checker` (#9). Vale para `Ac
 2. `Verifier.verify(artifact, evidence)`: LLM independente que recebe **só** o artefato e as evidências citadas, envelopadas como `<evidence untrusted="true">` (`build_checker_input`, sem parâmetro para raciocínio do Maker). Prompt versionado em `agent/prompts/checker/v1.md`.
    - `OpenAICompatibleVerifier`: padrão **Featherless** (`FEATHERLESS_BASE_URL`, `FEATHERLESS_API_KEY`, `CHECKER_MODEL`); trocar de provedor é só config.
    - `ClaudeVerifier`: fallback com contexto limpo (`claude-sonnet-5-5` por padrão).
+   - Envelope: `< > &` do conteúdo são escapados (não dá para fechar `<evidence>`); citação ausente vira `<evidence missing="true" />`; payload de `FORMAL_HOURS_DECLARED` não vai ao provedor (LGPD).
+   - `ClaudeVerifier` exige `maker_model` e recusa modelo igual ao do Maker.
+   - `pass` com issue `blocker`/`major` ou com `unsupported_claims` vira `fail` (`checker_inconsistent_verdict`); resposta truncada vira `fail` (`checker_truncated`).
    - `FallbackVerifier`: sem chave, timeout, erro de rede ou HTTP → fallback. Resposta inválida ou recusa **não** cai no fallback: vira `fail` com `checker_invalid_response`/`checker_refused`.
 3. `verify_artifact(...)` → `VerificationOutcome.status`: `draft` (checks falharam; o Maker refaz, máx. 2), `verified` (Checker `pass`) ou `needs_human` (Checker discorda, com as divergências).
 4. `verification_event(...)` monta o `VERIFICATION_RESULT` para `EvidenceService.append`: actor `agent`/`checker` com o modelo usado, payload com `status`, `prompt_version` e os dois resultados.

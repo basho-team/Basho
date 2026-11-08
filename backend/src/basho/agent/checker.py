@@ -49,12 +49,40 @@ DEFAULT_CLAUDE_CHECKER_MODEL = "claude-sonnet-5-5"
 CLAUDE_MAX_TOKENS = 16000
 INVALID_RESPONSE = "checker_invalid_response"
 REFUSED = "checker_refused"
+TRUNCATED = "checker_truncated"
+INCONSISTENT_VERDICT = "checker_inconsistent_verdict"
+REDACTED_KINDS: frozenset[EventKind] = frozenset({EventKind.FORMAL_HOURS_DECLARED})
+"""Payload formal (horas, pessoas) não vai ao provedor externo (LGPD): só tipo e origem."""
+_BLOCKING_SEVERITIES = frozenset({IssueSeverity.BLOCKER, IssueSeverity.MAJOR})
+_ENVELOPE_ESCAPES = {"<": r"\u003c", ">": r"\u003e", "&": r"\u0026"}
 
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 
 class VerifierUnavailableError(RuntimeError):
     """Provedor fora do ar, sem chave, com timeout ou erro HTTP: cabe fallback."""
+
+
+def _escape_envelope(body: str) -> str:
+    """Impede que o conteúdo feche `<evidence>`: escapa `< > &` como unicode JSON."""
+    for char, escaped in _ENVELOPE_ESCAPES.items():
+        body = body.replace(char, escaped)
+    return body
+
+
+def _evidence_body(event: EvidenceEvent) -> str:
+    payload: Any = (
+        "[omitido: dado formal, conferido pelos checks determinísticos]"
+        if event.kind in REDACTED_KINDS
+        else event.payload
+    )
+    data = {
+        "kind": event.kind.value,
+        "source": event.source.value,
+        "source_ref": event.source_ref,
+        "payload": payload,
+    }
+    return _escape_envelope(json.dumps(data, ensure_ascii=False, sort_keys=True))
 
 
 def load_checker_prompt() -> str:
@@ -71,20 +99,13 @@ def build_checker_input(artifact: VerifiableArtifact, evidence: Sequence[Evidenc
     for evidence_id in cited_evidence_ids(artifact):
         event = by_id.get(evidence_id)
         if event is None:
+            blocks.append(f'<evidence id="{evidence_id}" missing="true" />')
             continue
-        body = json.dumps(
-            {
-                "kind": event.kind.value,
-                "source": event.source.value,
-                "source_ref": event.source_ref,
-                "payload": event.payload,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        )
         flag = ' suspicious_instructions="true"' if contains_injection(event) else ""
-        blocks.append(f'<evidence id="{evidence_id}" untrusted="true"{flag}>\n{body}\n</evidence>')
-    artifact_json = artifact.model_dump_json(indent=1)
+        body = _evidence_body(event)
+        header = f'<evidence id="{evidence_id}" untrusted="true"{flag}>'
+        blocks.append(f"{header}\n{body}\n</evidence>")
+    artifact_json = _escape_envelope(artifact.model_dump_json(indent=1))
     return (
         "<artifact>\n" + artifact_json + "\n</artifact>\n\n"
         "<evidence_set>\n" + "\n".join(blocks) + "\n</evidence_set>"
@@ -107,9 +128,21 @@ def parse_checker_reply(text: str, model_id: str) -> VerificationResult:
         reply = _CheckerReply.model_validate(json.loads(_FENCE.sub("", text.strip())))
     except (json.JSONDecodeError, ValidationError):
         return _invalid(model_id, "resposta do Checker não é o JSON esperado")
+    issues = list(reply.issues)
+    verdict = reply.verdict
+    blocking = any(issue.severity in _BLOCKING_SEVERITIES for issue in issues)
+    if verdict is Verdict.PASS and (blocking or reply.unsupported_claims):
+        verdict = Verdict.FAIL
+        issues.append(
+            CheckIssue(
+                code=INCONSISTENT_VERDICT,
+                message="pass com issue blocker/major ou afirmação sem sustentação",
+                severity=IssueSeverity.MAJOR,
+            )
+        )
     return VerificationResult(
-        verdict=reply.verdict,
-        issues=tuple(reply.issues),
+        verdict=verdict,
+        issues=tuple(issues),
         unsupported_claims=tuple(reply.unsupported_claims),
         checker=model_id,
     )
@@ -164,7 +197,8 @@ class OpenAICompatibleVerifier:
                         self._url, json=body, headers=headers, timeout=self._timeout
                     )
             response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
+            choice = response.json()["choices"][0]
+            content = choice["message"]["content"]
         except httpx.HTTPStatusError as exc:
             raise VerifierUnavailableError(
                 f"provedor do Checker respondeu HTTP {exc.response.status_code}"
@@ -175,6 +209,8 @@ class OpenAICompatibleVerifier:
             ) from None
         except (KeyError, IndexError, TypeError, ValueError):
             return _invalid(self.model_id, "resposta do provedor sem choices[0].message.content")
+        if choice.get("finish_reason") == "length":
+            return _invalid(self.model_id, "resposta do Checker truncada", TRUNCATED)
         return parse_checker_reply(str(content), self.model_id)
 
 
@@ -189,8 +225,15 @@ class ClaudeVerifier:
     """Fallback: Claude com contexto limpo (só system do Checker + artefato + evidências)."""
 
     def __init__(
-        self, *, client: _AnthropicLike, model_id: str = DEFAULT_CLAUDE_CHECKER_MODEL
+        self,
+        *,
+        client: _AnthropicLike,
+        maker_model: str,
+        model_id: str = DEFAULT_CLAUDE_CHECKER_MODEL,
     ) -> None:
+        if model_id == maker_model:
+            msg = f"Checker precisa de modelo diferente do Maker ({maker_model!r}), ADR-0004"
+            raise ValueError(msg)
         self.model_id = model_id
         self._client = client
 
@@ -212,6 +255,8 @@ class ClaudeVerifier:
             raise VerifierUnavailableError(
                 f"Claude (Checker) respondeu HTTP {exc.status_code}"
             ) from None
+        if response.stop_reason == "max_tokens":
+            return _invalid(self.model_id, "resposta do Checker truncada", TRUNCATED)
         if response.stop_reason == "refusal":
             return _invalid(self.model_id, "o modelo recusou a verificação", REFUSED)
         text = "".join(block.text for block in response.content if block.type == "text")
