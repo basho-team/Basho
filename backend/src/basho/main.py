@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict
 
+from basho.agent.api import router as agent_router
 from basho.config import Settings, get_settings
 from basho.db import assert_least_privilege, create_engine, create_session_factory
 from basho.logging import configure_logging, get_logger
@@ -43,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
     app.include_router(reports_router, prefix=API_PREFIX)
+    app.include_router(agent_router, prefix=API_PREFIX)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health() -> HealthResponse:

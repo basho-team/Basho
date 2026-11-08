@@ -82,9 +82,12 @@ Implementado em `basho.agent.checks` e `basho.agent.checker` (#9). Vale para `Ac
 | POST | `/events/{id}/correct` | `CorrectionIn` | humano |
 | POST | `/artifacts/{id}/approval` | `ApprovalIn` | **formal, só humano** |
 | GET | `/projects/{id}/dossier` | `DossierEntryOut[]` (inclui `AgentRunMetrics`) | leitura |
-| POST | `/projects/{id}/agent-runs` | dispara job do agente → `{run_id}` | humano |
+| POST | `/projects/{id}/agent-runs` | `AgentRunIn(task_kind=research_report, researcher_id, period)` + headers de identidade (`X-Basho-*`) e `Idempotency-Key` opcional → `AgentRunOut` **202** (mesma chave → o mesmo run, 200); só enfileira | humano |
+| GET | `/agent-runs/{id}` | `AgentRunOut`: estado, tentativas, `RunError`, artefato (`artifact_event_id`, `artifact_status`), `calls[]` (modelo, tokens, latência, `estimated_cost_usd`) e totais | leitura |
 | GET | `/reports/{version_id}` | `ReportVersionOut` (versão + status por papel da versão atual) | leitura |
 | POST | `/reports/{version_id}/review` | `ReviewIn` → `ReviewOut` (201); versão que não é a atual → **409** `VersionConflictOut` | **formal, só humano** |
+
+**Fila e worker** (#10, `agent/run_store.py`, `agent/worker.py`, migração 0006). `agent_runs` é estado + fila: o worker (`python -m basho.agent.worker`, login membro de `basho_worker`, checado no startup) reserva com `FOR UPDATE SKIP LOCKED` o run `queued` com `run_after <= now`, numa transação curta, e roda o Maker **sem transação aberta**: audit, aprovações e consultas ao ledger abrem transações próprias (`agent/sessions.py`). Concluído: eventos do Maker + `agent_calls` + `completed` numa só transação. Falha: essa transação é desfeita (inclusive `maker_persist_failed`) e `fail_or_retry` grava o novo estado; retryable com tentativas restantes volta à fila com backoff `5 s · 2^(n-1)` (teto 5 min, #25). Códigos do worker: `worker_invalid_task`, `worker_unexpected_error`, `worker_commit_failed` (retryable). Privilégios: `basho_api` cria/lê runs e lê calls; `basho_worker` lê runs e atualiza só colunas de execução, insere calls (append-only). Custo (`agent/costs.py`): preço de lista congelado em 2026-11-08, estimativa (modelo fora da tabela → `null`). MVP single-tenant: o worker atende `TENANT_ID`; run preso em `running` após queda do processo não é recuperado (backlog). Tools: `ledger_query_events` real; GitHub simulado (`GITHUB_FIXTURES_DIR`) até o #7.
 
 O frontend gera tipos a partir de `/openapi.json` e usa mocks desses schemas até #5 ficar pronta.
 

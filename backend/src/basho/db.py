@@ -71,3 +71,19 @@ async def assert_least_privilege(engine: AsyncEngine) -> None:
             "tabelas); use o login da aplicação, membro de basho_api/basho_worker"
         )
         raise UnsafeDatabaseRoleError(message)
+
+
+class MissingDatabaseRoleError(RuntimeError):
+    """O login conectado não é membro do role esperado do processo (API ou worker)."""
+
+
+async def assert_member_of(engine: AsyncEngine, role: str) -> None:
+    """Falha rápido se o login não for membro de ``role`` (ex.: o worker usa ``basho_worker``)."""
+    async with engine.connect() as connection:
+        member = (
+            await connection.execute(
+                text("SELECT pg_has_role(current_user, :role, 'MEMBER')"), {"role": role}
+            )
+        ).scalar_one()
+    if not member:
+        raise MissingDatabaseRoleError(f"DATABASE_URL precisa ser um login membro de {role}")

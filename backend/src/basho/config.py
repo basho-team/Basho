@@ -6,6 +6,7 @@ variável obrigatória faltar ou for inválida, ``load_settings`` levanta
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 from uuid import UUID
 
@@ -54,6 +55,8 @@ class Settings(BaseSettings):
 
     maker_model: str = Field(default="claude-opus-5-5", min_length=1)
     maker_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+    github_fixtures_dir: Path | None = None
+    """Fixtures sintéticas do GitHub para as tools simuladas do worker (até o #7)."""
 
     @model_validator(mode="after")
     def _maker_and_checker_differ(self) -> Self:
