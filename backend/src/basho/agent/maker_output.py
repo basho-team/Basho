@@ -22,6 +22,8 @@ INVALID_JSON = "invalid_json"
 SCHEMA_VIOLATION = "schema_violation"
 TASK_FIELD_MISMATCH = "task_field_mismatch"
 TRUNCATED = "truncated_output"
+INVALID_CHARACTERS = "invalid_characters"
+EXTRA_FIELD = "<campo extra>"
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*\n?|\n?\s*```\s*$")
 
@@ -38,6 +40,25 @@ def _strip_fence(text: str) -> str:
     return _FENCE.sub("", text.strip())
 
 
+def _location(loc: tuple[int | str, ...], error_type: str) -> str:
+    """Caminho do erro. Em `extra_forbidden` o último segmento é uma chave escrita pelo modelo
+    (pode carregar texto externo), então ele não volta no feedback."""
+    parts = [str(part) for part in loc]
+    if error_type == "extra_forbidden" and parts:
+        parts[-1] = EXTRA_FIELD
+    return ".".join(parts) or "<raiz>"
+
+
+def _has_nul(value: object) -> bool:
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(_has_nul(key) or _has_nul(item) for key, item in value.items())
+    if isinstance(value, list):
+        return any(_has_nul(item) for item in value)
+    return False
+
+
 def parse_output(
     text: str, schema: type[BaseModel], expected: Mapping[str, Any]
 ) -> BaseModel | OutputProblem:
@@ -46,11 +67,14 @@ def parse_output(
         raw = json.loads(_strip_fence(text))
     except json.JSONDecodeError:
         return OutputProblem(INVALID_JSON, ("a resposta não é um único objeto JSON válido",))
+    if _has_nul(raw):
+        # O ledger rejeita U+0000; refazer custa menos que perder o run inteiro na gravação.
+        return OutputProblem(INVALID_CHARACTERS, ("remova caracteres de controle nulos (U+0000)",))
     try:
         artifact = schema.model_validate(raw)
     except ValidationError as exc:
         details = tuple(
-            f"{'.'.join(str(part) for part in error['loc']) or '<raiz>'}: {error['type']}"
+            f"{_location(error['loc'], error['type'])}: {error['type']}"
             for error in exc.errors(include_input=False, include_url=False)
         )
         return OutputProblem(SCHEMA_VIOLATION, details[:MAX_FEEDBACK_ITEMS])

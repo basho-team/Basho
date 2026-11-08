@@ -16,7 +16,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from basho.agent.tools import MVP_TOOLS, ToolCallStatus, ToolResult, ToolSpec
 from basho.evidence import EvidenceNotFoundError, EvidenceService
-from basho.evidence.contracts import EventKind, EvidenceEvent, NewEvidenceEvent
+from basho.evidence.contracts import (
+    FORMAL_DATA_KINDS,
+    EventKind,
+    EventSource,
+    EvidenceEvent,
+    NewEvidenceEvent,
+)
 
 MAX_EVENTS = 100
 DEFAULT_EVENTS = 50
@@ -54,9 +60,10 @@ class LedgerQueryEvents:
             return self._error(INVALID_ARGUMENTS)
         if args.project_id != self._project_id:
             return self._error(PROJECT_NOT_ALLOWED)
-        events = await self._evidence.query(
+        queried = await self._evidence.query(
             UUID(tenant_id), project_id=args.project_id, kinds=args.kinds, limit=args.limit
         )
+        events = [event for event in queried if is_citable(event)]
         return ToolResult(
             tool=self.spec.name,
             status=ToolCallStatus.OK,
@@ -73,17 +80,26 @@ class LedgerQueryEvents:
                 ]
             },
             untrusted_data=json.dumps(
-                [
-                    {"id": str(e.id), "source_ref": e.source_ref, "payload": e.payload}
-                    for e in events
-                ],
-                ensure_ascii=False,
-                sort_keys=True,
+                [_untrusted_view(event) for event in events], ensure_ascii=False, sort_keys=True
             ),
         )
 
     def _error(self, code: str) -> ToolResult:
         return ToolResult(tool=self.spec.name, status=ToolCallStatus.ERROR, error=code)
+
+
+def is_citable(event: EvidenceEvent) -> bool:
+    """Evidência é fato observado ou declarado. Eventos `source=agent` (rascunhos do Maker,
+    vereditos do Checker) não sustentam claims: citá-los seria evidência circular."""
+    return event.source is not EventSource.AGENT
+
+
+def _untrusted_view(event: EvidenceEvent) -> dict[str, Any]:
+    """Conteúdo do evento para o modelo. Dados formais (horas, dispêndio: pessoas e valores)
+    não vão ao LLM (LGPD, ADR-0006 §3): o Maker só precisa do `id` para citá-los."""
+    if event.kind in FORMAL_DATA_KINDS:
+        return {"id": str(event.id), "payload_omitted": "formal_data"}
+    return {"id": str(event.id), "source_ref": event.source_ref, "payload": event.payload}
 
 
 class LedgerEvidenceGateway:
@@ -92,15 +108,20 @@ class LedgerEvidenceGateway:
     def __init__(self, evidence: EvidenceService) -> None:
         self._evidence = evidence
 
-    async def get_many(self, tenant_id: UUID, ids: Sequence[UUID]) -> list[EvidenceEvent]:
-        """Eventos citados que existem neste tenant. Os inexistentes ficam de fora, e o check
-        determinístico os aponta como `unknown_evidence`."""
+    async def get_many(
+        self, tenant_id: UUID, project_id: UUID, ids: Sequence[UUID]
+    ) -> list[EvidenceEvent]:
+        """Eventos citados que existem neste tenant **e neste projeto** e são citáveis (não
+        `source=agent`). Os demais ficam de fora, e o check determinístico os aponta como
+        `unknown_evidence` — inclusive um id que tenha chegado ao modelo por conteúdo externo."""
         found: list[EvidenceEvent] = []
         for event_id in dict.fromkeys(ids):
             try:
-                found.append(await self._evidence.get(tenant_id, event_id))
+                event = await self._evidence.get(tenant_id, event_id)
             except EvidenceNotFoundError:
                 continue
+            if event.project_id == project_id and is_citable(event):
+                found.append(event)
         return found
 
     async def append(self, event: NewEvidenceEvent) -> EvidenceEvent:

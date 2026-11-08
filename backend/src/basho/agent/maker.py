@@ -7,9 +7,11 @@ audit) e porque validação, retries e persistência são decididos por código:
 2. a resposta final é JSON validado pelo `output_schema` do perfil e pelos campos da tarefa;
 3. checks determinísticos + Checker independente (`verify_artifact`, #9);
 4. saída inválida ou `maker_should_retry` → o Maker refaz, no máximo `MAX_REDOS` vezes;
-5. o rascunho e o resultado da verificação viram eventos no ledger (actor `maker` + modelo).
+   esgotado, termina em `invalid_output` **sem gravar** (rascunho reprovado não vira evidência);
+5. o rascunho aprovado nos checks e o resultado da verificação viram eventos no ledger
+   (actor `maker` + modelo), com status `verified` ou `needs_human`.
 
-O Maker nunca decide estado formal: o artefato fica em `draft`, `verified` ou `needs_human`.
+O Maker nunca decide estado formal: o artefato gravado fica em `verified` ou `needs_human`.
 """
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ from basho.agent.runs import RunError
 from basho.agent.tasks import TaskProfile, load_prompt
 from basho.agent.tools import ToolCallStatus
 from basho.agent.verifier import DeterministicChecker, VerifiableArtifact, Verifier
+from basho.evidence import EvidenceValidationError
 from basho.evidence.contracts import (
     Actor,
     ActorType,
@@ -66,6 +69,8 @@ MAX_REDOS = 2
 """Quantas vezes o Maker refaz após saída inválida ou falha determinística (3 tentativas)."""
 MAX_TOOL_TURNS = 12
 MAKER_ACTOR_ID = "maker"
+CHECKS_FAILED = "maker_checks_failed"
+PERSIST_FAILED = "maker_persist_failed"
 
 
 class MakerStatus(StrEnum):
@@ -80,7 +85,9 @@ class MakerStatus(StrEnum):
 class EvidenceGateway(Protocol):
     """Acesso do Maker ao ledger (implementado sobre o `EvidenceService`)."""
 
-    async def get_many(self, tenant_id: UUID, ids: Sequence[UUID]) -> list[EvidenceEvent]: ...
+    async def get_many(
+        self, tenant_id: UUID, project_id: UUID, ids: Sequence[UUID]
+    ) -> list[EvidenceEvent]: ...
 
     async def append(self, event: NewEvidenceEvent) -> EvidenceEvent: ...
 
@@ -95,6 +102,15 @@ class MakerTask:
     profile: TaskProfile
     task_input: Mapping[str, Any]
     is_synthetic: bool = False
+
+    def __post_init__(self) -> None:
+        """Erro de programação, não do modelo: falha já na montagem da tarefa."""
+        fields = self.profile.output_schema.model_fields
+        unknown = sorted(set(self.task_input) - set(fields))
+        if unknown:
+            raise ValueError(f"task_input tem campos fora do output_schema: {unknown}")
+        if "project_id" in fields and self.task_input.get("project_id") != str(self.project_id):
+            raise ValueError("task_input['project_id'] precisa ser o project_id da tarefa")
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,8 +216,8 @@ class Maker:
         return None
 
     async def _tool_result(self, context: ToolCallContext, block: Any) -> dict[str, Any]:
-        arguments = block.input if isinstance(block.input, Mapping) else {}
-        result = await self._policy.execute(context, str(block.name), arguments)
+        # Entrada que não é objeto JSON é negada (e auditada) pela policy, sem executar.
+        result = await self._policy.execute(context, str(block.name), block.input)
         return {
             "type": "tool_result",
             "tool_use_id": block.id,
@@ -217,7 +233,9 @@ class Maker:
             return self._redo(conversation, parsed, output_feedback(parsed))
         artifact: VerifiableArtifact = parsed  # type: ignore[assignment]
         try:
-            evidence = await self._evidence.get_many(task.tenant_id, cited_evidence_ids(artifact))
+            evidence = await self._evidence.get_many(
+                task.tenant_id, task.project_id, cited_evidence_ids(artifact)
+            )
             outcome = await verify_artifact(
                 artifact, evidence, checker=self._checker, verifier=self._verifier
             )
@@ -226,18 +244,26 @@ class Maker:
                 code="checker_unavailable", message="Checker indisponível", retryable=True
             )
             return _finish(conversation, MakerStatus.FAILED, error=error)
-        if outcome.maker_should_retry and conversation.attempts <= MAX_REDOS:
-            return self._redo(conversation, None, checks_feedback(outcome.deterministic.issues))
+        if outcome.maker_should_retry:
+            # Reprovado nos checks: refaz; esgotado, nada vai ao ledger (não vira evidência).
+            redo = self._redo(
+                conversation, None, checks_feedback(outcome.deterministic.issues), outcome
+            )
+            return redo
         return await self._persist(task, conversation, artifact, outcome)
 
     def _redo(
-        self, conversation: _Conversation, problem: OutputProblem | None, feedback: str
+        self,
+        conversation: _Conversation,
+        problem: OutputProblem | None,
+        feedback: str,
+        outcome: VerificationOutcome | None = None,
     ) -> MakerResult | None:
         if conversation.attempts > MAX_REDOS:
-            code = f"maker_{problem.code}" if problem is not None else "maker_invalid_output"
+            code = f"maker_{problem.code}" if problem is not None else CHECKS_FAILED
             message = "saída rejeitada após o limite de tentativas"
             error = RunError(code=code, message=message, retryable=False)
-            return _finish(conversation, MakerStatus.INVALID_OUTPUT, error=error)
+            return _finish(conversation, MakerStatus.INVALID_OUTPUT, error=error, outcome=outcome)
         conversation.attempts += 1
         conversation.messages.append({"role": "user", "content": feedback})
         return None
@@ -250,18 +276,25 @@ class Maker:
         outcome: VerificationOutcome,
     ) -> MakerResult:
         model = conversation.calls[-1].model
-        saved = await self._evidence.append(
-            artifact_event(task, artifact, outcome, model=model, attempts=conversation.attempts)
-        )
-        verification = await self._evidence.append(
-            verification_event(
-                tenant_id=task.tenant_id,
-                project_id=task.project_id,
-                artifact_event_id=saved.id,
-                outcome=outcome,
-                is_synthetic=task.is_synthetic,
+        try:
+            saved = await self._evidence.append(
+                artifact_event(task, artifact, outcome, model=model, attempts=conversation.attempts)
             )
-        )
+            verification = await self._evidence.append(
+                verification_event(
+                    tenant_id=task.tenant_id,
+                    project_id=task.project_id,
+                    artifact_event_id=saved.id,
+                    outcome=outcome,
+                    is_synthetic=task.is_synthetic,
+                )
+            )
+        except EvidenceValidationError:
+            # A transação é do chamador: quem roda o Maker (worker, #10) decide o rollback.
+            error = RunError(
+                code=PERSIST_FAILED, message="o ledger rejeitou o artefato", retryable=False
+            )
+            return _finish(conversation, MakerStatus.FAILED, error=error, outcome=outcome)
         return MakerResult(
             status=MakerStatus.COMPLETED,
             calls=tuple(conversation.calls),
@@ -312,8 +345,17 @@ def _text_of(response: Any) -> str:
 
 
 def _finish(
-    conversation: _Conversation, status: MakerStatus, *, error: RunError | None
+    conversation: _Conversation,
+    status: MakerStatus,
+    *,
+    error: RunError | None,
+    outcome: VerificationOutcome | None = None,
 ) -> MakerResult:
+    """Fim sem gravar no ledger. `outcome` (se houver) só para diagnóstico do run."""
     return MakerResult(
-        status=status, calls=tuple(conversation.calls), attempts=conversation.attempts, error=error
+        status=status,
+        calls=tuple(conversation.calls),
+        attempts=conversation.attempts,
+        error=error,
+        outcome=outcome,
     )

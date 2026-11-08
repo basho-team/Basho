@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from basho.agent.artifacts import ResearchReportDraft
+from basho.agent.ledger_tools import is_citable
 from basho.agent.verifier import Verdict, VerifiableArtifact, VerificationResult
 from basho.evidence.contracts import EvidenceEvent, NewEvidenceEvent
 from basho.evidence.domain.hashing import compute_content_hash
@@ -95,11 +96,16 @@ class InMemoryEvidence:
         self._events = {event.id: event for event in events}
         self.appended: list[EvidenceEvent] = []
 
-    async def get_many(self, tenant_id: UUID, ids: Sequence[UUID]) -> list[EvidenceEvent]:
+    async def get_many(
+        self, tenant_id: UUID, project_id: UUID, ids: Sequence[UUID]
+    ) -> list[EvidenceEvent]:
         return [
             self._events[i]
             for i in dict.fromkeys(ids)
-            if i in self._events and self._events[i].tenant_id == tenant_id
+            if i in self._events
+            and self._events[i].tenant_id == tenant_id
+            and self._events[i].project_id == project_id
+            and is_citable(self._events[i])
         ]
 
     async def append(self, event: NewEvidenceEvent) -> EvidenceEvent:

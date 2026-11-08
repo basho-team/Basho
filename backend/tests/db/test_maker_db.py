@@ -16,7 +16,7 @@ from basho.agent.tasks import RESEARCH_REPORT_PROFILE
 from basho.audit import AuditService
 from basho.db import tenant_session
 from basho.evidence import EvidenceService
-from basho.evidence.contracts import ArtifactStatus, EventKind
+from basho.evidence.contracts import Actor, ActorType, ArtifactStatus, EventKind, EventSource
 from evidence_factories import make_event
 from maker_support import FAKE_MODEL, FakeClient, FixedVerifier, final, report_input, tool_call
 from report_factories import report
@@ -107,8 +107,92 @@ async def test_gateway_skips_evidence_of_another_tenant(session_factory: Factory
     # Act
     async with tenant_session(session_factory, intruder) as session:
         found = await LedgerEvidenceGateway(EvidenceService(session)).get_many(
-            intruder, [foreign.id]
+            intruder, project_id, [foreign.id]
         )
 
     # Assert
     assert found == []
+
+
+async def test_gateway_skips_evidence_of_another_project(session_factory: Factory) -> None:
+    # Arrange
+    tenant_id, project_id, other_project = uuid4(), uuid4(), uuid4()
+    async with tenant_session(session_factory, tenant_id) as session:
+        foreign = await EvidenceService(session).append(
+            make_event(tenant_id=tenant_id, project_id=other_project)
+        )
+
+    # Act
+    async with tenant_session(session_factory, tenant_id) as session:
+        found = await LedgerEvidenceGateway(EvidenceService(session)).get_many(
+            tenant_id, project_id, [foreign.id]
+        )
+
+    # Assert
+    assert found == []
+
+
+async def test_ledger_tool_and_gateway_ignore_agent_events(session_factory: Factory) -> None:
+    # Arrange: um rascunho anterior do Maker (source=agent) no mesmo projeto
+    tenant_id, project_id = uuid4(), uuid4()
+    async with tenant_session(session_factory, tenant_id) as session:
+        observed = await EvidenceService(session).append(
+            make_event(tenant_id=tenant_id, project_id=project_id)
+        )
+        previous = await EvidenceService(session).append(
+            make_event(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                kind=EventKind.ACTIVITY_RECORD,
+                source=EventSource.AGENT,
+                actor=Actor(type=ActorType.AGENT, id="maker", model="m"),
+                payload={"draft": {}},
+            )
+        )
+
+    # Act
+    async with tenant_session(session_factory, tenant_id) as session:
+        evidence = EvidenceService(session)
+        listed = await LedgerQueryEvents(evidence, project_id).run(
+            str(tenant_id), {"project_id": str(project_id)}
+        )
+        cited = await LedgerEvidenceGateway(evidence).get_many(
+            tenant_id, project_id, [observed.id, previous.id]
+        )
+
+    # Assert
+    assert listed.data is not None
+    assert [event["id"] for event in listed.data["events"]] == [str(observed.id)]
+    assert [event.id for event in cited] == [observed.id]
+
+
+async def test_ledger_tool_never_sends_formal_payload_to_the_model(
+    session_factory: Factory,
+) -> None:
+    # Arrange: horas formais (pessoa + período) não vão ao LLM; só o id para citação
+    tenant_id, project_id = uuid4(), uuid4()
+    formal_person = "pessoa-formal-123"
+    async with tenant_session(session_factory, tenant_id) as session:
+        hours = await EvidenceService(session).append(
+            make_event(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                kind=EventKind.FORMAL_HOURS_DECLARED,
+                source=EventSource.USER,
+                actor=Actor(type=ActorType.USER, id="coordenador-1"),
+                payload={"researcher_id": formal_person, "period": "2026-10"},
+            )
+        )
+
+    # Act
+    async with tenant_session(session_factory, tenant_id) as session:
+        result = await LedgerQueryEvents(EvidenceService(session), project_id).run(
+            str(tenant_id), {"project_id": str(project_id)}
+        )
+
+    # Assert
+    assert result.untrusted_data is not None
+    assert formal_person not in result.untrusted_data
+    assert str(hours.id) in result.untrusted_data
+    assert result.data is not None
+    assert result.data["events"][0]["kind"] == "formal_hours_declared"

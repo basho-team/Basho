@@ -6,10 +6,10 @@ variável obrigatória faltar ou for inválida, ``load_settings`` levanta
 """
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, Field, SecretStr, ValidationError
+from pydantic import AnyHttpUrl, Field, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     tenant_id: UUID
     maker_model: str = Field(default="claude-opus-5-5", min_length=1)
     maker_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+
+    @model_validator(mode="after")
+    def _maker_and_checker_differ(self) -> Self:
+        """ADR-0004: o Checker é outro modelo. O fallback Claude do Checker confere o mesmo
+        no `ClaudeVerifier(maker_model=...)` (#9)."""
+        if self.maker_model.strip().lower() == self.checker_model.strip().lower():
+            raise ValueError("MAKER_MODEL e CHECKER_MODEL precisam ser modelos diferentes")
+        return self
 
 
 def _describe_errors(error: ValidationError) -> str:
