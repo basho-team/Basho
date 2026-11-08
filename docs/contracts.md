@@ -50,12 +50,14 @@ Tools do MVP: `github_list_commits`, `github_get_pull_request`, `ledger_query_ev
 
 ### 2.1 Conector GitHub (#7)
 `basho.connectors.github`:
-- `GithubClient`: httpx, token só de `GITHUB_TOKEN` (`SecretStr`), paginação por `Link`. Erros viram `GithubError(code)`: `github_unauthorized | github_not_found | github_rate_limited | github_http_error | github_network | github_invalid_response`. `retryable` vale para rate limit, rede e HTTP 5xx.
+- `GithubClient`: httpx, token só de `GITHUB_TOKEN` (`SecretStr`), paginação por `Link`. Erros viram `GithubError(code)`: `github_unauthorized | github_not_found | github_rate_limited | github_http_error | github_network | github_invalid_response`. `retryable` vale para rate limit, rede e HTTP 5xx (outros 4xx não). O erro leva `retry_after` (segundos pedidos pelo GitHub via `Retry-After`/`x-ratelimit-reset`, ou `None`) e `attempts` (tentativas feitas).
+  - **Leituras** (`GET`) repetem falha transitória por `basho.resilience.RetryPolicy` (backoff exponencial com jitter, `max_attempts=3`, `max_delay=60s`). Se o `retry_after` passar de `max_delay`, não espera: sobe o erro para o worker reagendar o run.
+  - **Escritas** nunca são repetidas às cegas. `ensure_issue(repo, title, body, idempotency_key)` consulta as últimas 200 issues pela chave (marcador `<!-- basho-idempotency-key:… -->` no corpo) antes de criar e **antes de cada reenvio**; se a consulta falhar, sobe o erro sem reenviar. Escritas em série e espaçadas em ≥ 1s.
 - `RepoRef("owner/name")`: validado, vem da configuração do projeto e **nunca do modelo**.
 - `GithubIngestService(session, client).sync(tenant, projeto, repo)`: grava `COMMIT_OBSERVED` (`source_ref` = `owner/repo@sha`) e `PULL_REQUEST_OBSERVED` (`owner/repo#n`), com `source=github` e actor `system/github-connector`.
   - Idempotente por `source_ref` (`EvidenceService.existing_source_refs`), com advisory lock por tenant+projeto+repo.
   - O payload guarda só o login do autor (sem e-mail ou nome); texto truncado em 20 mil caracteres.
-- `build_github_tools(client, repo)`: versões reais de `github_list_commits` e `github_get_pull_request` (`read`, texto só em `untrusted_data`) e de `github_create_issue` (`external`, `requires_approval`; a policy não executa sem decisão humana). Usam as mesmas specs das simuladas.
+- `build_github_tools(client, repo)`: versões reais de `github_list_commits` e `github_get_pull_request` (`read`, texto só em `untrusted_data`) e de `github_create_issue` (`external`, `requires_approval`; a policy não executa sem decisão humana). Usam as mesmas specs das simuladas. `github_create_issue` deriva a chave de idempotência de `sha256(tenant, repo, título, corpo)` (não vem do modelo) e devolve `data = {repo, issue_number, already_existed}`: repetir a mesma intenção devolve a issue existente (`already_existed=true`) em vez de criar outra. Falha vira `error` com código estável, sem corpo nem segredo.
 
 ## 3. Artefato do Maker
 `ActivityRecordDraft`: `claims[]` por seção (desafio, hipótese, método, resultado, incerteza), cada um com ≥ 1 `evidence_id`; horas/participantes só como **referência** a eventos formais; lacunas em `missing[]` viram pendências com pergunta objetiva; `eligibility_note` nunca afirma enquadramento.
