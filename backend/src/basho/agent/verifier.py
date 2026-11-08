@@ -14,8 +14,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from basho.agent.artifacts import ActivityRecordDraft
+from basho.agent.artifacts import ActivityRecordDraft, ResearchReportDraft
 from basho.evidence.contracts import EvidenceEvent
+
+VerifiableArtifact = ActivityRecordDraft | ResearchReportDraft
+"""Artefatos formais que passam por checks e Checker (ADR-0004/0009)."""
 
 
 class Verdict(StrEnum):
@@ -60,7 +63,7 @@ class DeterministicChecker(Protocol):
     """Roda antes de qualquer LLM: schema, citações existentes, sem dados formais inferidos."""
 
     def check(
-        self, artifact: ActivityRecordDraft, evidence: Sequence[EvidenceEvent]
+        self, artifact: VerifiableArtifact, evidence: Sequence[EvidenceEvent]
     ) -> VerificationResult: ...
 
 
@@ -70,5 +73,5 @@ class Verifier(Protocol):
     model_id: str
 
     async def verify(
-        self, artifact: ActivityRecordDraft, evidence: Sequence[EvidenceEvent]
+        self, artifact: VerifiableArtifact, evidence: Sequence[EvidenceEvent]
     ) -> VerificationResult: ...

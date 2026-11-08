@@ -15,7 +15,7 @@ from basho.evidence.contracts import EventKind
 from basho.main import create_app
 from basho.reports.schemas import ReportVersionOut
 from conftest import VALID_ENV
-from report_factories import RESEARCHER, seed_report
+from report_db_factories import RESEARCHER, seed_report
 
 pytestmark = pytest.mark.db
 

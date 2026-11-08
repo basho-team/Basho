@@ -24,7 +24,7 @@ from basho.reports.consolidation import ReviewState
 from basho.reports.corrections import ReviseClaim
 from basho.reports.schemas import CorrectionIn, ReportVersionOut, ReviewIn, ReviewOut
 from evidence_factories import fresh_ids, make_event
-from report_factories import MAKER, RESEARCHER, seed_draft, seed_report
+from report_db_factories import MAKER, RESEARCHER, seed_draft, seed_report
 
 pytestmark = pytest.mark.db
 
