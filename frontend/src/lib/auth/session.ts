@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -21,8 +21,17 @@ function isMissing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
+/**
+ * Entrada rápida da demonstração (opt-in): um clique na conta cria a sessão sem senha. Qualquer
+ * pessoa que alcance o site entra com qualquer função; use só com dados sintéticos e nunca em
+ * ambiente com dado real. Desligada por padrão.
+ */
+export function openAccessEnabled(): boolean {
+  return process.env.BASHO_DEMO_OPEN_ACCESS === "true";
+}
+
 export function demoLoginEnabled(): boolean {
-  return process.env.BASHO_DEMO_LOGIN_ENABLED === "true";
+  return process.env.BASHO_DEMO_LOGIN_ENABLED === "true" || openAccessEnabled();
 }
 
 export function hasDemoPassword(): boolean {
@@ -34,6 +43,66 @@ export async function verifyDemoPassword(password: string): Promise<boolean> {
   const [, salt, encoded] = process.env.BASHO_DEMO_PASSWORD_HASH!.split(":");
   const actual = await deriveKey(password, salt, 64) as Buffer;
   return timingSafeEqual(actual, Buffer.from(encoded, "hex"));
+}
+
+/** Usuário da conta, com o UUID do backend quando `BASHO_DEMO_BACKEND_USERS` o mapeia. */
+function userForAccount(account: (typeof DEMO_ACCOUNTS)[number]): DemoUser {
+  const user = accountUser(account);
+  const rawMapping = process.env.BASHO_DEMO_BACKEND_USERS;
+  if (!rawMapping) return user;
+  let mapping: unknown;
+  try { mapping = JSON.parse(rawMapping); } catch { return user; }
+  const parsedMapping = z.record(z.string(), z.uuid()).safeParse(mapping);
+  return parsedMapping.success ? { ...user, backendUserId: parsedMapping.data[account.id] } : user;
+}
+
+/**
+ * Sessão assinada (sem estado): HMAC-SHA256 sobre `{conta, emissão, expiração}` com
+ * `BASHO_DEMO_SESSION_SECRET` (mín. 32 caracteres). Existe para ambiente serverless, onde não há
+ * disco compartilhado. Troca revogação no servidor por independência de armazenamento: o logout
+ * só apaga o cookie e o token vale até expirar (4 h). Sem o segredo, vale o arquivo local.
+ */
+const SIGNED_PREFIX = "s1.";
+const MIN_SECRET_LENGTH = 32;
+
+export function sessionSecret(): string | null {
+  const value = process.env.BASHO_DEMO_SESSION_SECRET;
+  return value && value.length >= MIN_SECRET_LENGTH ? value : null;
+}
+
+function signature(secret: string, payload: string): string {
+  return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+export function signSession(accountId: string, secret: string, now = Date.now()): string {
+  if (!DEMO_ACCOUNTS.some(account => account.id === accountId)) throw new Error("Conta inválida");
+  const payload = Buffer.from(JSON.stringify({
+    a: accountId, i: now, e: now + SESSION_TTL_SECONDS * 1000,
+  })).toString("base64url");
+  return SIGNED_PREFIX + payload + "." + signature(secret, payload);
+}
+
+export function readSignedSession(token: string | undefined, secret: string | null, now = Date.now()): DemoUser | null {
+  if (!token || !secret || token.length > 512 || !token.startsWith(SIGNED_PREFIX)) return null;
+  const [payload, mac, extra] = token.slice(SIGNED_PREFIX.length).split(".");
+  if (!payload || !mac || extra !== undefined) return null;
+  const expected = Buffer.from(signature(secret, payload));
+  const actual = Buffer.from(mac);
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
+  let decoded: unknown;
+  try { decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch { return null; }
+  const parsed = z.object({ a: z.string(), i: z.number().int(), e: z.number().int() }).strict().safeParse(decoded);
+  if (!parsed.success) return null;
+  const { a, i, e } = parsed.data;
+  if (i > now || e <= now || e - i !== SESSION_TTL_SECONDS * 1000) return null;
+  const account = DEMO_ACCOUNTS.find(candidate => candidate.id === a);
+  return account ? userForAccount(account) : null;
+}
+
+/** Cria a sessão: assinada se há segredo, senão arquivo local. */
+export async function createSession(accountId: string): Promise<string> {
+  const secret = sessionSecret();
+  return secret ? signSession(accountId, secret) : sessionStore().create(accountId);
 }
 
 /** Arquivos locais da demonstração permitem revogação entre os runtimes do Next. */
@@ -76,13 +145,7 @@ export class DemoSessionStore {
       || record.expiresAt - record.issuedAt !== SESSION_TTL_SECONDS * 1000) return null;
     const account = DEMO_ACCOUNTS.find(candidate => candidate.id === record.accountId);
     if (!account) return null;
-    const user = accountUser(account);
-    const rawMapping = process.env.BASHO_DEMO_BACKEND_USERS;
-    if (!rawMapping) return user;
-    let mapping: unknown;
-    try { mapping = JSON.parse(rawMapping); } catch { return user; }
-    const parsedMapping = z.record(z.string(), z.uuid()).safeParse(mapping);
-    return parsedMapping.success ? { ...user, backendUserId: parsedMapping.data[account.id] } : user;
+    return userForAccount(account);
   }
 
   async destroy(token: string | undefined): Promise<void> {
@@ -103,7 +166,9 @@ export function sessionToken(request: Request): string | undefined {
 
 export async function userFromRequest(request: Request): Promise<DemoUser | null> {
   if (!demoLoginEnabled()) return null;
-  return sessionStore().read(sessionToken(request));
+  const token = sessionToken(request);
+  if (token?.startsWith(SIGNED_PREFIX)) return readSignedSession(token, sessionSecret());
+  return sessionStore().read(token);
 }
 
 export function sameOriginJson(request: Request): boolean {

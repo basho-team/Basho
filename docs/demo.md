@@ -34,6 +34,29 @@ usuários do backend. Contas fictícias, todas com a mesma senha:
 | `marina@lumen.example` | Gerente | gestão, dossiê, **Publicação** (autorizar links, gerar e publicar) |
 | `rafael@lumen.example` | Fiscal | análise fiscal |
 
+### Entrar com um clique
+
+Por padrão o `demo-up.ps1` liga a **entrada rápida**: na tela de login, clique em **Ana**, **Marina**
+ou **Rafael** e você já entra, sem digitar senha (`-RequirePassword` volta a exigir a senha). Na
+função certa, as barreiras continuam: o gerente não vê a área do pesquisador e vice-versa.
+
+> A entrada rápida deixa qualquer pessoa que alcance o site entrar com qualquer função. Use só com
+> dados sintéticos e não a ligue num ambiente com dado real.
+
+### Na Vercel (ou outro ambiente serverless)
+
+O deploy só tem o front, sem disco compartilhado: a sessão em arquivo não funciona lá. Defina, nas
+variáveis de ambiente do projeto, **e refaça o deploy**:
+
+| Variável | Valor |
+| --- | --- |
+| `BASHO_DEMO_OPEN_ACCESS` | `true` |
+| `BASHO_DEMO_SESSION_SECRET` | 32+ caracteres aleatórios (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) |
+
+A sessão passa a ser um token assinado (HMAC) que vale 4 h; o logout apaga o cookie, mas não revoga
+o token no servidor. Se o projeto tem **Vercel Authentication** ligada, o visitante precisa entrar
+na Vercel antes; desligue em *Settings → Deployment Protection* para uma demo pública.
+
 > **Abra `http://localhost:<porta>` (não `127.0.0.1`).** O login confere a origem exata, e o Next
 > monta a URL da requisição com `localhost`; pelo `127.0.0.1` o login é recusado.
 

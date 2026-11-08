@@ -1,7 +1,7 @@
 import { boundedJson } from "@/lib/auth/http";
 import { NextResponse } from "next/server";
 import { LoginSchema, authenticateDemo, consumeLoginAttempt } from "@/lib/auth/login";
-import { authError, demoLoginEnabled, hasDemoPassword, sameOriginJson, SESSION_COOKIE,
+import { authError, createSession, demoLoginEnabled, hasDemoPassword, sameOriginJson, SESSION_COOKIE,
   SESSION_TTL_SECONDS, sessionStore, sessionToken } from "@/lib/auth/session";
 
 export async function POST(request: Request): Promise<Response> {
@@ -14,9 +14,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!consumeLoginAttempt(parsed.data.email)) return authError(429, "Muitas tentativas. Tente novamente em 15 minutos.");
   const accountId = await authenticateDemo(parsed.data);
   if (!accountId) return authError(401, "E-mail, senha ou função não autorizados.");
-  const store = sessionStore();
-  await store.destroy(sessionToken(request));
-  const token = await store.create(accountId);
+  await sessionStore().destroy(sessionToken(request));
+  const token = await createSession(accountId);
   const response = NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true, sameSite: "lax", path: "/", maxAge: SESSION_TTL_SECONDS,

@@ -22,6 +22,7 @@ param(
     [int]$WebPort = 3010,
     [int]$FakePort = 9100,
     [string]$DemoPassword = "basho-demo-2026",
+    [switch]$RequirePassword,
     [switch]$FakeProviders,
     [switch]$Down
 )
@@ -164,6 +165,8 @@ console.log("scrypt:" + salt + ":" + scryptSync(process.argv[2], salt, 64).toStr
 '@ | Set-Content -Encoding ascii $hashFile
     $env:BASHO_DEMO_PASSWORD_HASH = (node $hashFile $DemoPassword | Select-Object -Last 1).Trim()
     $env:BASHO_DEMO_LOGIN_ENABLED = "true"
+    # Entrada rápida: clicar na conta já entra, sem senha (só com dados sintéticos). -RequirePassword desliga.
+    $env:BASHO_DEMO_OPEN_ACCESS = $(if ($RequirePassword) { "false" } else { "true" })
     $env:BASHO_DEMO_BACKEND_USERS = (@{ ana = $researcher; bruno = $researcher2; marina = $manager } | ConvertTo-Json -Compress)
     $env:BASHO_DEMO_REVIEWERS = "${researcher}:researcher,${researcher2}:researcher,${manager}:manager"
     npm run build
@@ -178,7 +181,8 @@ Write-Host "Demo no ar" -ForegroundColor Green
 Write-Host "  Projeto da demo : $projectId"
 Write-Host "  Front           : http://localhost:$WebPort  (use localhost: o login confere a origem exata)"
 Write-Host "  API             : http://127.0.0.1:$ApiPort/docs"
-Write-Host "  Login           : http://localhost:$WebPort/login  (senha de demonstração: $DemoPassword)"
+if ($RequirePassword) { Write-Host "  Login           : http://localhost:$WebPort/login  (senha de demonstração: $DemoPassword)" }
+else { Write-Host "  Login           : http://localhost:$WebPort/login  (clique em uma conta para entrar; senha, se preferir: $DemoPassword)" }
 Write-Host "                    ana@lumen.example (pesquisador) | marina@lumen.example (gerente) | rafael@lumen.example (fiscal)"
 Write-Host "  Publicação      : http://localhost:$WebPort/gerente/publicacao  (gerente: cole o link da pasta/página)"
 if ($FakeProviders) { Write-Host "  Servidor FALSO  : http://127.0.0.1:$FakePort/_state  (documentos gerados abrem aqui)" }
