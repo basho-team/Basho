@@ -1,11 +1,16 @@
 """Fixtures compartilhadas."""
 
+import asyncio
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from basho.config import get_settings
+
+if sys.platform == "win32":  # psycopg async não funciona com o ProactorEventLoop
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 VALID_ENV: dict[str, str] = {
     "DATABASE_URL": "postgresql+psycopg://basho:test-db-secret@localhost:5432/basho",
