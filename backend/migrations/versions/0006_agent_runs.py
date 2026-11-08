@@ -8,11 +8,11 @@ mutável, mas só o ``basho_worker`` atualiza, e só as colunas de execução (G
 ``agent_calls`` é append-only: um ``CallRecord`` do Maker por chamada ao modelo (modelo, versão do
 prompt, tokens, latência, custo estimado). Sem conteúdo de prompt nem resposta (ADR-0006).
 
-Cadeia provisória: 0004 → 0006 (a 0005 é de projetos/pendências; o merge ajusta o
-``down_revision`` para '0005'). Roles vêm da 0002; aqui só GRANT.
+Cadeia: 0005 → 0006 (a 0005 é de projetos/pendências; ajustado no merge com a main,
+antes era 0004). Roles vêm da 0002; aqui só GRANT.
 
 Revision ID: 0006
-Revises: 0004
+Revises: 0005
 Create Date: 2026-11-08
 """
 
@@ -22,7 +22,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0006"
-down_revision: str | Sequence[str] | None = "0004"
+down_revision: str | Sequence[str] | None = "0005"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

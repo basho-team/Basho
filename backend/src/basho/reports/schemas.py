@@ -6,6 +6,7 @@ Nenhum tipo de domínio é redefinido aqui: versões, revisões, correções e s
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Self
 from uuid import UUID
 
@@ -73,3 +74,24 @@ class VersionConflictOut(BaseModel):
     detail: str
     requested_version_id: UUID
     current_version_id: UUID
+
+
+class ReportReviewFlag(BaseModel):
+    """Versão atual que voltou a precisar de revisão porque uma evidência citada foi corrigida."""
+
+    model_config = ConfigDict(frozen=True)
+
+    report_version_id: UUID
+    researcher_id: UUID
+    superseded_event_id: UUID = Field(description="Evidência original, substituída")
+    cause_event_id: UUID = Field(description="Evento de correção que causou a revisão")
+    marked_at: datetime
+
+
+class PeriodClosingOut(BaseModel):
+    """Resultado do fechamento autônomo do período (rascunhos por regras, sem LLM)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    created: tuple[ReportVersionOut, ...]
+    already_drafted_or_empty: tuple[UUID, ...]

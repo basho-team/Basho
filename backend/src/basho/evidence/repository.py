@@ -43,6 +43,21 @@ class EvidenceRepository:
         )
         return set((await self._session.execute(statement)).scalars())
 
+    async def get_many(
+        self, tenant_id: UUID, project_id: UUID, event_ids: list[UUID]
+    ) -> list[EvidenceEventRow]:
+        """Eventos de ``event_ids`` do tenant E do projeto, do mais antigo ao mais novo."""
+        statement = (
+            select(EvidenceEventRow)
+            .where(
+                EvidenceEventRow.tenant_id == tenant_id,
+                EvidenceEventRow.project_id == project_id,
+                EvidenceEventRow.id.in_(event_ids),
+            )
+            .order_by(EvidenceEventRow.created_at, EvidenceEventRow.id)
+        )
+        return list((await self._session.execute(statement)).scalars())
+
     async def existing_source_refs(
         self, tenant_id: UUID, project_id: UUID, source: str, refs: list[str]
     ) -> set[str]:

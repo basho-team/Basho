@@ -1,6 +1,7 @@
-"""Schemas HTTP do MVP (pendências, correção, aprovação, dossiê).
+"""Schemas HTTP do MVP (projetos, pendências, resposta, aprovação, dossiê) — issue #5.
 
 O OpenAPI gerado pelo FastAPI a partir destes modelos é o contrato do frontend (ADR-0002).
+"Artefato" é o evento `activity_record` do Maker no ledger: `artifact_id` = id desse evento.
 """
 
 from __future__ import annotations
@@ -15,6 +16,32 @@ from pydantic import BaseModel, ConfigDict, Field
 from basho.agent.verifier import VerificationResult
 from basho.evidence.contracts import ArtifactStatus, EvidenceEvent
 
+MAX_ANSWER_LENGTH = 4000
+MAX_COMMENT_LENGTH = 2000
+
+
+class _Frozen(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class ActivityOut(_Frozen):
+    id: UUID
+    project_id: UUID
+    title: str
+    description: str | None
+    is_synthetic: bool
+    created_at: datetime
+
+
+class ProjectOut(_Frozen):
+    id: UUID
+    name: str
+    description: str | None
+    is_synthetic: bool
+    created_at: datetime
+    activities: tuple[ActivityOut, ...]
+    open_pending: int = Field(ge=0, description="Pendências com status `open`")
+
 
 class PendingKind(StrEnum):
     MISSING_JUSTIFICATION = "missing_justification"
@@ -25,36 +52,48 @@ class PendingKind(StrEnum):
     NEEDS_REVIEW = "needs_review"
 
 
-class PendingItemOut(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+class PendingStatus(StrEnum):
+    OPEN = "open"
+    ANSWERED = "answered"  # resposta humana gravada (USER_CORRECTION)
+    RESOLVED = "resolved"  # encerrada por decisão formal sobre o artefato
+
+
+class PendingItemOut(_Frozen):
+    """Pendência aberta a partir de um `verification_result` (`needs_human` ou `verified`)."""
 
     id: UUID
     project_id: UUID
     activity_id: UUID | None
     kind: PendingKind
     title: str
-    question: str
+    question: str = Field(description="Pergunta objetiva; texto do Maker é dado, não instrução")
     assignee_role: str
     artifact_id: UUID | None
     artifact_status: ArtifactStatus | None
+    verification_event_id: UUID
+    status: PendingStatus
+    resolved: bool = Field(description="status != open (compatibilidade)")
+    response: str | None
     created_at: datetime
-    resolved: bool
 
 
-class CorrectionIn(BaseModel):
-    """Correção humana: gera USER_CORRECTION com `supersedes` e reabre dependentes."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    target_event_id: UUID
-    corrected_payload: dict[str, Any]
-    reason: str = Field(min_length=5)
+class PendingPageOut(_Frozen):
+    items: tuple[PendingItemOut, ...]
+    next_offset: int | None = Field(description="Offset da próxima página; null se acabou")
 
 
-class ConfirmationIn(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+class PendingAnswerIn(_Frozen):
+    """Resposta/correção humana: vira `user_correction` com `supersedes` = artefato."""
 
-    answer: str = Field(min_length=1, description="Resposta à pendência")
+    answer: str = Field(min_length=1, max_length=MAX_ANSWER_LENGTH)
+    corrected_payload: dict[str, Any] | None = Field(
+        default=None, description="Campos corrigidos pelo humano (opcional)"
+    )
+
+
+class PendingAnswerOut(_Frozen):
+    pending: PendingItemOut
+    correction_event_id: UUID
 
 
 class ApprovalDecision(StrEnum):
@@ -62,18 +101,32 @@ class ApprovalDecision(StrEnum):
     REJECT = "reject"
 
 
-class ApprovalIn(BaseModel):
-    """Ação FORMAL: só via endpoint humano autenticado (ADR-0005)."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
+class ApprovalIn(_Frozen):
+    """Ação FORMAL: só via endpoint humano, papel `manager` (ADR-0005)."""
 
     decision: ApprovalDecision
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=MAX_COMMENT_LENGTH)
 
 
-class AgentRunMetrics(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+class ApprovalOut(_Frozen):
+    artifact_id: UUID
+    decision: ApprovalDecision
+    status: ArtifactStatus
+    approver_id: UUID
+    comment: str | None
+    evidence_event_id: UUID
+    created_at: datetime
 
+
+class ConflictOut(_Frozen):
+    """409: a ação não vale no estado atual (ex.: artefato não `verified`, pendência fechada)."""
+
+    detail: str
+    code: str
+    current_status: str | None = None
+
+
+class AgentRunMetrics(_Frozen):
     run_id: UUID
     model: str
     input_tokens: int = Field(ge=0)
@@ -82,15 +135,22 @@ class AgentRunMetrics(BaseModel):
     cost_usd: float = Field(ge=0)
 
 
-class DossierEntryOut(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class DossierEntryOut(_Frozen):
     artifact_id: UUID
-    activity_id: UUID
+    activity_id: UUID | None
     title: str
     status: ArtifactStatus
-    content: dict[str, Any]
-    evidence: tuple[EvidenceEvent, ...]
+    content: dict[str, Any] = Field(description="Rascunho do Maker (`draft`)")
+    evidence: tuple[EvidenceEvent, ...] = Field(description="Fontes citadas")
     verifications: tuple[VerificationResult, ...]
-    history: tuple[EvidenceEvent, ...]
-    runs: tuple[AgentRunMetrics, ...]
+    history: tuple[EvidenceEvent, ...] = Field(
+        description="Artefato, vereditos, correções e decisões, do mais antigo ao mais novo"
+    )
+    approval: ApprovalOut | None
+    run_id: UUID | None
+    runs: tuple[AgentRunMetrics, ...] = Field(description="Vazio até existir agent_runs (#10)")
+
+
+class DossierOut(_Frozen):
+    project: ProjectOut
+    entries: tuple[DossierEntryOut, ...]

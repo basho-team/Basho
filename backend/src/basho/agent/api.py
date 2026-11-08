@@ -28,8 +28,7 @@ from basho.agent.run_store import (
 )
 from basho.agent.runs import IDEMPOTENCY_KEY_PATTERN, RunError, RunStatus
 from basho.db import tenant_session
-from basho.reports.api import Reviewer, current_reviewer
-from basho.reports.versions import ReviewerRole
+from basho.identity import HumanIdentity, HumanRole, current_human
 
 router = APIRouter(tags=["agent"])
 
@@ -127,7 +126,7 @@ async def create_agent_run(
     body: AgentRunIn,
     request: Request,
     response: Response,
-    requester: Reviewer = Depends(current_reviewer),  # noqa: B008
+    requester: HumanIdentity = Depends(current_human),  # noqa: B008
     idempotency_key: str | None = Header(
         default=None, alias=IDEMPOTENCY_HEADER, pattern=IDEMPOTENCY_KEY_PATTERN
     ),
@@ -141,7 +140,7 @@ async def create_agent_run(
         period=body.period,
         requested_by=requester.user_id,
         idempotency_key=idempotency_key,
-        may_act_for_others=requester.role is ReviewerRole.MANAGER,
+        may_act_for_others=requester.role is HumanRole.MANAGER,
     )
     try:
         async with tenant_session(request.app.state.session_factory, tenant_id) as session:

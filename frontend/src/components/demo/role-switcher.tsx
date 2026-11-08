@@ -11,6 +11,13 @@ const ROLES = [
   { href: "/fiscal", label: "Fiscal", person: "Rafael Lima" },
 ] as const;
 
+/** Telas por papel ligadas ao contrato da #5 (a rota define o papel da demonstração). */
+const ROLE_PAGES = [
+  { href: "/pesquisador/pendencias", label: "Pendências do pesquisador" },
+  { href: "/gerente/pendencias", label: "Pendências do gerente" },
+  { href: "/gerente/dossie", label: "Dossiê" },
+] as const;
+
 function RoleNav({ pathname }: { pathname: string | null }) {
   return (
     <header className="border-b">
@@ -35,6 +42,18 @@ function RoleNav({ pathname }: { pathname: string | null }) {
             </Link>
           );
         })}
+      </nav>
+      <nav aria-label="Telas" className="mx-auto flex max-w-5xl flex-wrap gap-x-3 gap-y-1 px-4 pb-2 text-xs">
+        {ROLE_PAGES.map((page) => (
+          <Link
+            key={page.href}
+            href={page.href}
+            aria-current={pathname === page.href ? "page" : undefined}
+            className="text-muted-foreground underline-offset-2 hover:underline aria-[current=page]:font-medium aria-[current=page]:text-foreground"
+          >
+            {page.label}
+          </Link>
+        ))}
       </nav>
     </header>
   );

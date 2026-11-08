@@ -16,8 +16,11 @@ from basho.db import (
     create_engine,
     create_session_factory,
 )
+from basho.evidence.api import router as evidence_router
 from basho.logging import configure_logging, get_logger
+from basho.projects.api import router as projects_router
 from basho.reports.api import router as reports_router
+from basho.reports.project_api import router as report_projects_router
 
 APP_TITLE = "Basho API"
 APP_VERSION = "0.1.0"
@@ -54,6 +57,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.session_factory = create_session_factory(engine)
     app.include_router(reports_router, prefix=API_PREFIX)
     app.include_router(agent_router, prefix=API_PREFIX)
+    app.include_router(report_projects_router, prefix=API_PREFIX)
+    app.include_router(evidence_router, prefix=API_PREFIX)
+    app.include_router(projects_router, prefix=API_PREFIX)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health() -> HealthResponse:

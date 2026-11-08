@@ -26,6 +26,14 @@ APPEND_ONLY_TABLES = [
     "reporting_periods",
     "report_versions",
     "report_reviews",
+    "audit_log",
+    "tool_approval_requests",
+    "tool_approval_decisions",
+    "projects",
+    "activities",
+    "pending_items",
+    "pending_answers",
+    "artifact_approvals",
     "agent_calls",
 ]
 # Tabelas de infraestrutura sem dado de tenant: sem RLS e sem privilégio para a app.
