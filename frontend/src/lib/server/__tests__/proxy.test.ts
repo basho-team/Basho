@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { SignedSessionStore } from "@/lib/auth/session";
+import { signSession } from "@/lib/auth/session";
 import { proxy } from "@/proxy";
 
 const SECRET = "s".repeat(40);
@@ -36,7 +36,7 @@ describe("proxy: portão do deploy + sessão individual", () => {
     vi.stubEnv("DEMO_BASIC_AUTH_PASSWORD", "senha-forte");
     vi.stubEnv("BASHO_DEMO_LOGIN_ENABLED", "true");
     vi.stubEnv("BASHO_DEMO_SESSION_SECRET", SECRET);
-    const token = await new SignedSessionStore(SECRET).create("ana");
+    const token = signSession("ana", SECRET);
     const headers = { authorization: BASIC, cookie: `basho_demo_session=${token}` };
 
     expect((await proxy(request("/pesquisador", headers))).status).toBe(200);

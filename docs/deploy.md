@@ -42,14 +42,15 @@ por função (#68, ADR-0011 proposta): uma camada não substitui a outra.
 | --- | --- | --- |
 | `BASHO_DEMO_LOGIN_ENABLED` | `true` | `true` |
 | `BASHO_DEMO_PASSWORD_HASH` | `scrypt:<salt>:<hash>` | idem |
-| `BASHO_DEMO_SESSION_SECRET` | ≥ 32 caracteres (sessão assinada: sem disco compartilhado) | — (sessão em arquivo, revogável) |
+| `BASHO_DEMO_SESSION_SECRET` | ≥ 32 caracteres (sessão assinada do #69: sem disco compartilhado) | — (sessão em arquivo, revogável) |
+| `BASHO_DEMO_OPEN_ACCESS` | opcional: `true` liga a entrada com um clique (qualquer visitante entra com qualquer função; só dados sintéticos) | idem, atrás do Basic Auth |
 | `BASHO_DEMO_BACKEND_USERS` | — | `{"ana":"<uuid pesquisador>","marina":"<uuid gerente>"}` (UUIDs do seed) |
 
 No Vercel o disco é somente leitura e não é compartilhado entre instâncias; sem
 `BASHO_DEMO_SESSION_SECRET` o login responde 500. A sessão assinada não tem revogação no
 servidor (logout apaga o cookie; um token copiado vale até expirar, ≤ 4 h).
 
-A origem esperada nas rotas POST vem de `X-Forwarded-Proto/Host` (`publicOrigin`), porque
+A origem esperada nas rotas POST (login, clique, logout e BFF) vem de `X-Forwarded-Proto/Host` (`publicOrigin`), porque
 atrás do proxy `request.url` é o endereço interno do container.
 
 ## Atualizar
