@@ -77,14 +77,24 @@ Implementado em `basho.agent.checks` e `basho.agent.checker` (#9). Vale para `Ac
 
 | Método | Rota | Corpo / resposta | Nível |
 | --- | --- | --- | --- |
-| GET | `/projects/{id}/pending` | `PendingItemOut[]` | leitura |
-| POST | `/pending/{id}/confirm` | `ConfirmationIn` | humano |
-| POST | `/events/{id}/correct` | `CorrectionIn` | humano |
-| POST | `/artifacts/{id}/approval` | `ApprovalIn` | **formal, só humano** |
-| GET | `/projects/{id}/dossier` | `DossierEntryOut[]` (inclui `AgentRunMetrics`) | leitura |
+| GET | `/projects/{id}` | `ProjectOut` (com `activities[]` e `open_pending`) | leitura |
+| GET | `/projects/{id}/pending?status=open&limit=50&offset=0` | `PendingPageOut` (`items: PendingItemOut[]`, `next_offset`) | leitura |
+| POST | `/pending/{id}/answer` | `PendingAnswerIn` → `PendingAnswerOut` (201); pendência fechada ou de aprovação → **409** `ConflictOut` | humano |
+| POST | `/artifacts/{id}/approval` | `ApprovalIn` → `ApprovalOut` (201); artefato fora de `verified` (ou já decidido / com pendência aberta) → **409** `ConflictOut` | **formal, só humano (`manager`)** |
+| GET | `/projects/{id}/dossier` | `DossierOut` (`project` + `entries: DossierEntryOut[]`, com `runs: AgentRunMetrics[]` quando houver) | leitura |
 | POST | `/projects/{id}/agent-runs` | dispara job do agente → `{run_id}` | humano |
 | GET | `/reports/{version_id}` | `ReportVersionOut` (versão + status por papel da versão atual) | leitura |
 | POST | `/reports/{version_id}/review` | `ReviewIn` → `ReviewOut` (201); versão que não é a atual → **409** `VersionConflictOut` | **formal, só humano** |
+
+**Projetos e pendências (#5).** Schemas em `compliance/api_contracts.py`; rotas em `projects/api.py`.
+- *Artefato* = evento `activity_record` do Maker (`payload.artifact_type`); `artifact_id` é o id desse evento.
+- Pendências são uma projeção dos `verification_result` do projeto: `needs_human` → `checker_disagreement`; `verified` → `approval_required`; cada `draft.missing[]` → `missing_justification` (pergunta do Maker, exibida como dado). Idempotente: uma pendência por (veredito, item).
+- `status`: `open` → `answered` (resposta gravada) ou `resolved` (artefato aprovado/rejeitado, ou aprovação que deixou de valer).
+- `POST /pending/{id}/answer` grava `user_correction` com `supersedes` = artefato (o original não muda) e o artefato passa a `draft` (o Maker refaz, ADR-0004). Pendência `approval_required` só se fecha pela aprovação.
+- Estado do artefato (derivado): decisão formal → `approved`/`rejected`; correção humana → `draft`; senão o último veredito (`verified`, `needs_human`, `draft`); sem veredito → `proposed`.
+- `POST /artifacts/{id}/approval`: só `manager`; `approve` exige `verified` sem pendência aberta além da de aprovação; `reject` vale em `verified` ou `needs_human`. Uma decisão por artefato. Grava `user_confirmation` (approve) ou `status_changed` (reject), ambos com `identity_verified: false`.
+- Identidade humana: mesmos headers do #48 (`X-Basho-User-Id`, `X-Basho-Role`, `X-Basho-Identity-Secret`, só no BFF); sem segredo configurado → 503; header inválido → 401; papel errado → 403.
+- Erros com mensagem fixa (sem detalhe interno): 404 projeto/pendência/artefato, 409 `ConflictOut`, 422 validação.
 
 O frontend gera tipos a partir de `/openapi.json` e usa mocks desses schemas até #5 ficar pronta.
 
