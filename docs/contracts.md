@@ -47,6 +47,15 @@ Tools do MVP: `github_list_commits`, `github_get_pull_request`, `ledger_query_ev
 
 **Audit** (módulo `audit`). `NewAuditEntry(tenant_id, event_type, actor_type, actor_id?, run_id?, tool, level?, decision, outcome, reason_code?, input_summary, approval_id?)`; `input_summary` = só chaves de primeiro nível + tamanho em bytes, **nunca valores**. Tabela `audit_log` fora do ledger (registro operacional, não evidência). Migração `0004_tool_audit`: as três tabelas são append-only (trigger), com RLS forçada por `tenant_id` e só `SELECT, INSERT` para `basho_api`/`basho_worker` — exceto `tool_approval_decisions`, em que o `basho_worker` só tem `SELECT` (o agente não aprova o próprio pedido). CHECKs compostos repetem no banco as invariantes de `NewAuditEntry`. `input_summary.keys` só traz chaves declaradas no `input_schema` da tool.
 
+### 2.1 Conector GitHub (#7)
+`basho.connectors.github`:
+- `GithubClient`: httpx, token só de `GITHUB_TOKEN` (`SecretStr`), paginação por `Link`. Erros viram `GithubError(code)`: `github_unauthorized | github_not_found | github_rate_limited | github_http_error | github_network | github_invalid_response`. `retryable` vale para rate limit, rede e HTTP 5xx.
+- `RepoRef("owner/name")`: validado, vem da configuração do projeto e **nunca do modelo**.
+- `GithubIngestService(session, client).sync(tenant, projeto, repo)`: grava `COMMIT_OBSERVED` (`source_ref` = `owner/repo@sha`) e `PULL_REQUEST_OBSERVED` (`owner/repo#n`), com `source=github` e actor `system/github-connector`.
+  - Idempotente por `source_ref` (`EvidenceService.existing_source_refs`), com advisory lock por tenant+projeto+repo.
+  - O payload guarda só o login do autor (sem e-mail ou nome); texto truncado em 20 mil caracteres.
+- `build_github_tools(client, repo)`: versões reais de `github_list_commits` e `github_get_pull_request` (`read`, texto só em `untrusted_data`) e de `github_create_issue` (`external`, `requires_approval`; a policy não executa sem decisão humana). Usam as mesmas specs das simuladas.
+
 ## 3. Artefato do Maker
 `ActivityRecordDraft`: `claims[]` por seção (desafio, hipótese, método, resultado, incerteza), cada um com ≥ 1 `evidence_id`; horas/participantes só como **referência** a eventos formais; lacunas em `missing[]` viram pendências com pergunta objetiva; `eligibility_note` nunca afirma enquadramento.
 
