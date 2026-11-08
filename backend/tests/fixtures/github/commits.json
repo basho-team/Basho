@@ -1,0 +1,7 @@
+[
+  {"_synthetic": true, "sha": "a1f3c9e", "author": "ana-pesquisadora", "date": "2026-10-20T13:00:00Z", "message": "exp(quant): baseline fp16 + script de benchmark"},
+  {"_synthetic": true, "sha": "b7d2e10", "author": "ana-pesquisadora", "date": "2026-10-21T16:22:00Z", "message": "exp(quant): int8 estático e dinâmico; registrar métricas"},
+  {"_synthetic": true, "sha": "c94ab33", "author": "ana-pesquisadora", "date": "2026-10-22T11:05:00Z", "message": "exp(quant): comparar precisão por classe no dataset de vibração"},
+  {"_synthetic": true, "sha": "d0e1f22", "author": "bruno-eng", "date": "2026-10-28T09:10:00Z", "message": "exp(data): SMOTE no dataset de vibração"},
+  {"_synthetic": true, "sha": "e5f6a77", "author": "bot-externo", "date": "2026-10-29T09:58:00Z", "message": "docs: readme"}
+]
