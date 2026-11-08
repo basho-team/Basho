@@ -1,6 +1,6 @@
 # ADR-0007: Recorte do MVP para o hackathon (< 24h)
 
-- **Status:** aceita (item "outros conectores" alterado pela ADR-0010: Drive e Notion, só leitura)
+- **Status:** aceita (item "outros conectores" alterado pela proposta ADR-0012: Drive e Notion, só leitura)
 - **Data:** 2026-11-07
 - **Decisores:** equipe Basho
 

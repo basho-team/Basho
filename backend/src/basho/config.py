@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     """Segunda conta do Featherless, usada quando a primária fica sem crédito (401/402/403)."""
     checker_model: str
     github_token: SecretStr
+    google_service_account_json: SecretStr | None = None
+    """Chave JSON da service account (conteúdo ou caminho do arquivo): publica no Drive (ADR-0010).
+    O usuário compartilha a pasta com o e-mail dela. Vazio = Drive indisponível."""
+    notion_token: SecretStr | None = None
+    """Token da integração interna do Notion. Vazio = Notion indisponível."""
+    google_drive_api_url: AnyHttpUrl | None = None
+    google_token_uri: AnyHttpUrl | None = None
+    notion_api_url: AnyHttpUrl | None = None
+    """Endpoints alternativos, só para desenvolvimento (servidor falso local). Vazio = oficiais."""
     tenant_id: UUID
     # Segredo server-to-server do BFF que repassa a identidade do revisor (#39). Sem ele,
     # endpoints formais de revisão ficam fechados (503). Placeholder até a auth real.
@@ -56,7 +65,7 @@ class Settings(BaseSettings):
         return value
 
     maker_provider: Literal["anthropic", "featherless"] = "anthropic"
-    """`featherless` = Maker via API compatível com OpenAI em `FEATHERLESS_BASE_URL` (ADR-0011)."""
+    """`featherless` = Maker via API compatível com OpenAI em `FEATHERLESS_BASE_URL` (ADR-0013)."""
     maker_model: str = Field(default="claude-opus-5-5", min_length=1)
     checker_fallback_model: str | None = None
     """Fallback do Checker no mesmo provedor OpenAI-compatível (ex.: outro modelo do
@@ -68,14 +77,12 @@ class Settings(BaseSettings):
     """`GITHUB_PROJECT_REPOS` (JSON `{project_id: "owner/name"}`): projetos com GitHub real
     no worker. Projeto fora do mapa usa as tools simuladas (até o projeto guardar o repo)."""
     google_drive_client_id: str = ""
-    """OAuth do Google Drive (ADR-0010), escopo `drive.readonly`. Sem os três valores e o mapa
-    de pastas, o Drive fica desligado."""
+    """OAuth do Google Drive para leitura (ADR-0012), escopo `drive.readonly`. Sem os três
+    valores e o mapa de pastas, a leitura do Drive fica desligada."""
     google_drive_client_secret: SecretStr | None = None
     google_drive_refresh_token: SecretStr | None = None
     google_drive_project_folders: dict[UUID, list[str]] = Field(default_factory=dict)
     """`GOOGLE_DRIVE_PROJECT_FOLDERS` (JSON `{project_id: ["<folder_id>", ...]}`)."""
-    notion_token: SecretStr | None = None
-    """Token de integração interna do Notion (ADR-0010); só lê o que foi compartilhado."""
     notion_project_sources: dict[UUID, list[str]] = Field(default_factory=dict)
     """`NOTION_PROJECT_SOURCES` (JSON `{project_id: ["database:<id>", "page:<id>"]}`)."""
 

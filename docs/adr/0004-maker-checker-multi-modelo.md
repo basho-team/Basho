@@ -1,6 +1,6 @@
 # ADR-0004: Agentes Maker–Checker com modelos diferentes
 
-- **Status:** aceita (Maker no Featherless por padrão: ver ADR-0011)
+- **Status:** aceita (Maker no Featherless por padrão: ver proposta ADR-0013)
 - **Data:** 2026-11-07
 - **Decisores:** equipe Basho
 

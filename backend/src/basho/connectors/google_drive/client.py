@@ -1,4 +1,4 @@
-"""Cliente mínimo da API do Google Drive v3, só leitura (ADR-0010).
+"""Cliente mínimo da API do Google Drive v3, só leitura (ADR-0012).
 
 Auth: OAuth 2.0 com refresh token (`GOOGLE_DRIVE_CLIENT_ID`, `..._CLIENT_SECRET`,
 `..._REFRESH_TOKEN`), escopo `drive.readonly`. O access token é renovado sob demanda, fica só em

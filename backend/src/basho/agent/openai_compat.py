@@ -1,4 +1,4 @@
-"""Maker via API compatível com OpenAI (Featherless; ADR-0011).
+"""Maker via API compatível com OpenAI (Featherless; ADR-0013).
 
 `OpenAICompatibleMessagesClient` imita o pedaço de `anthropic.AsyncAnthropic` que o Maker usa
 (`client.messages.create`): recebe os parâmetros no formato da Anthropic, chama

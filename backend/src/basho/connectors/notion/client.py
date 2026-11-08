@@ -1,4 +1,4 @@
-"""Cliente mínimo da API do Notion, só leitura (ADR-0010).
+"""Cliente mínimo da API do Notion, só leitura (ADR-0012).
 
 Auth: token de integração interna (`NOTION_TOKEN`); a integração só enxerga o que foi
 compartilhado com ela no workspace. Lê páginas de databases (editadas desde `since`) e páginas

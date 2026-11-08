@@ -1,6 +1,6 @@
-# ADR-0011: Maker e Checker no Featherless (API compatível com OpenAI)
+# ADR-0013: Maker e Checker no Featherless (API compatível com OpenAI)
 
-- **Status:** aceita
+- **Status:** proposta (decisão de custo de 2026-11-08; aceite da equipe pendente)
 - **Data:** 2026-11-08
 - **Decisores:** equipe Basho (decisão de custo de Thiago Lorhan, 2026-11-08)
 - **Altera:** ADR-0004 (item "Maker = Claude via SDK `anthropic`")

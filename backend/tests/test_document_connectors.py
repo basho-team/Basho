@@ -1,4 +1,4 @@
-"""Conectores Google Drive e Notion (ADR-0010): clientes, payload e configuração. HTTP mockado."""
+"""Conectores Google Drive e Notion (ADR-0012): clientes, payload e configuração. HTTP mockado."""
 
 import hashlib
 import json

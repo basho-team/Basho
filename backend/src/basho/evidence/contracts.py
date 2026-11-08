@@ -23,7 +23,7 @@ class EventKind(StrEnum):
     ISSUE_OBSERVED = "issue_observed"
     DOCUMENT_OBSERVED = "document_observed"
     """Revisão de um documento externo (Drive, Notion). Nova revisão = novo evento com
-    `supersedes` apontando para a anterior; o original nunca muda (ADR-0003/0010)."""
+    `supersedes` apontando para a anterior; o original nunca muda (ADR-0003/0012)."""
     TECHNICAL_JUSTIFICATION = "technical_justification"
     ACTIVITY_RECORD = "activity_record"
     FORMAL_HOURS_DECLARED = "formal_hours_declared"

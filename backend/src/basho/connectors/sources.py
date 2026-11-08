@@ -1,4 +1,4 @@
-"""Fontes de documentos por projeto (Drive, Notion) e a sincronização antes do Maker (ADR-0010).
+"""Fontes de documentos por projeto (Drive, Notion) e a sincronização antes do Maker (ADR-0012).
 
 O mapa projeto → pasta/database vem da configuração (`GOOGLE_DRIVE_PROJECT_FOLDERS`,
 `NOTION_PROJECT_SOURCES`), nunca do modelo. Cada fonte sincroniza numa transação curta própria:

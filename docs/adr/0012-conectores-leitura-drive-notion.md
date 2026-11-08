@@ -1,9 +1,10 @@
-# ADR-0010: Conectores Google Drive e Notion (só leitura)
+# ADR-0012: Conectores de leitura Google Drive e Notion (evidências)
 
-- **Status:** aceita
+- **Status:** proposta (decisão de produto de 2026-11-08; aceite da equipe pendente)
 - **Data:** 2026-11-08
 - **Decisores:** equipe Basho (decisão de produto de Thiago Lorhan, 2026-11-08)
 - **Altera:** ADR-0007 (item "Fora: outros conectores")
+- **Relação:** complementa a ADR-0010 (publicação em Drive/Notion, escrita a partir de links autorizados). Esta trata só da **leitura** de evidências.
 
 ## Contexto e problema
 A ADR-0007 limitou o MVP ao GitHub. Mas boa parte das evidências de P&D (planos de
@@ -46,7 +47,12 @@ Opção 3.
   primeiro nível da pasta e Notion só os blocos de primeiro nível; refresh token do Drive é um
   segredo a mais para gerenciar; documentos sem texto extraível (PDF) não são lidos pelo Maker.
 - **Regras derivadas:** novos valores de `EventKind`/`EventSource` exigem migração que redefina
-  os CHECKs do ledger (0007) e o teste de drift aponta para a migração mais recente que os
+  os CHECKs do ledger (0009) e o teste de drift aponta para a migração mais recente que os
   define. Conector novo só lê, salvo ADR que diga o contrário.
+- **Convivência com a ADR-0010:** a publicação autentica no Google por service account e a
+  leitura, por OAuth com refresh token (a conta do usuário lê as pastas dele sem compartilhar com
+  a service account). O `NOTION_TOKEN` é o mesmo. Próximo passo natural: a leitura usar os links
+  autorizados de `project_links` (ADR-0010) em vez dos mapas `GOOGLE_DRIVE_PROJECT_FOLDERS` e
+  `NOTION_PROJECT_SOURCES`, e unificar a autenticação do Google.
 - **Backlog:** subpastas e blocos aninhados; OCR/texto de PDF; webhooks; mapa projeto → fontes
   guardado no banco em vez de env; reconciliação de documentos financeiros.

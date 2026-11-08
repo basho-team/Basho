@@ -1,11 +1,11 @@
-"""Amplia os CHECKs do ledger para documentos do Google Drive e do Notion (ADR-0010).
+"""Amplia os CHECKs do ledger para documentos do Google Drive e do Notion (ADR-0012).
 
 Só troca as constraints `ck_evidence_events_kind`/`ck_evidence_events_source`: nenhuma linha é
 alterada (ADR-0003). O downgrade falha se já houver eventos com os valores novos, de propósito:
 apagar evidência para voltar o schema não é opção.
 
-Revision ID: 0007
-Revises: 0006
+Revision ID: 0009
+Revises: 0008
 Create Date: 2026-11-08
 """
 
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0007"
-down_revision: str | Sequence[str] | None = "0006"
+revision: str = "0009"
+down_revision: str | Sequence[str] | None = "0008"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -284,6 +284,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Integrations Config */
+        get: operations["integrations_config_api_v1_integrations_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Links */
+        get: operations["list_links_api_v1_projects__project_id__links_get"];
+        put?: never;
+        /**
+         * Add Link
+         * @description Autoriza o Basho a usar o link: só gerente; o acesso é verificado antes de gravar.
+         */
+        post: operations["add_link_api_v1_projects__project_id__links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Link */
+        delete: operations["revoke_link_api_v1_projects__project_id__links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Publications */
+        get: operations["list_publications_api_v1_projects__project_id__publications_get"];
+        put?: never;
+        /**
+         * Publish Now
+         * @description Enfileira o que está verificado e ainda não publicado; o worker escreve nos destinos.
+         */
+        post: operations["publish_now_api_v1_projects__project_id__publications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -822,6 +898,20 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** IntegrationsConfigOut */
+        IntegrationsConfigOut: {
+            /** Drive */
+            drive: boolean;
+            /** Notion */
+            notion: boolean;
+            /** Github */
+            github: boolean;
+            /**
+             * Google Service Account Email
+             * @description Conta com quem o usuário compartilha a pasta do Drive (papel Editor)
+             */
+            google_service_account_email: string | null;
+        };
         /**
          * IssueSeverity
          * @enum {string}
@@ -832,6 +922,54 @@ export interface components {
          * @enum {string}
          */
         ItemKind: "claim" | "experiment" | "missing";
+        /** LinkErrorOut */
+        LinkErrorOut: {
+            /** Detail */
+            detail: string;
+            /** Code */
+            code: string;
+        };
+        /** LinkIn */
+        LinkIn: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * LinkKind
+         * @enum {string}
+         */
+        LinkKind: "github_repo" | "drive_folder" | "notion_page";
+        /** LinkOut */
+        LinkOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            kind: components["schemas"]["LinkKind"];
+            /** Url */
+            url: string;
+            /** Display Name */
+            display_name: string;
+            status: components["schemas"]["LinkStatus"];
+            /** Last Check At */
+            last_check_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * LinkStatus
+         * @enum {string}
+         */
+        LinkStatus: "active" | "revoked";
         /** ManagerConsolidation */
         ManagerConsolidation: {
             /**
@@ -1070,6 +1208,59 @@ export interface components {
             marked: components["schemas"]["ReviewMark"][];
             /** Already Marked */
             already_marked: string[];
+        };
+        /** PublicationOut */
+        PublicationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Link Id
+             * Format: uuid
+             */
+            link_id: string;
+            link_kind: components["schemas"]["LinkKind"] | null;
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Title */
+            title: string;
+            status: components["schemas"]["PublicationStatus"];
+            /** Attempts */
+            attempts: number;
+            /** External Url */
+            external_url: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * PublicationStatus
+         * @enum {string}
+         */
+        PublicationStatus: "queued" | "running" | "published" | "failed";
+        /** PublicationsOut */
+        PublicationsOut: {
+            /**
+             * Queued
+             * @description Publicações novas enfileiradas por esta chamada
+             */
+            queued: number;
+            /** Items */
+            items: components["schemas"]["PublicationOut"][];
         };
         /**
          * ReportClaim
@@ -2250,6 +2441,237 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConflictOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    integrations_config_api_v1_integrations_config_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationsConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_links_api_v1_projects__project_id__links_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_link_api_v1_projects__project_id__links_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkErrorOut"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkErrorOut"];
+                };
+            };
+        };
+    };
+    revoke_link_api_v1_projects__project_id__links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_publications_api_v1_projects__project_id__publications_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_now_api_v1_projects__project_id__publications_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationsOut"];
                 };
             };
             /** @description Validation Error */

@@ -1,4 +1,4 @@
-"""Maker via API compatível com OpenAI (Featherless, ADR-0011). HTTP mockado, sem rede."""
+"""Maker via API compatível com OpenAI (Featherless, ADR-0013). HTTP mockado, sem rede."""
 
 import json
 from typing import Any

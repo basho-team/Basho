@@ -1,4 +1,4 @@
-"""Base HTTP dos conectores de documentos (Drive, Notion; ADR-0010).
+"""Base HTTP dos conectores de documentos (Drive, Notion; ADR-0012).
 
 Mesmas garantias do cliente GitHub (#7/#25): só leitura, retry de falha transitória com
 `call_with_retry`, erro com código estável e **sem** segredo na mensagem, e `retryable` para o

@@ -34,7 +34,7 @@ class ModelPrice:
 PRICES: dict[str, ModelPrice] = {
     "claude-opus-5-5": ModelPrice(Decimal(4), Decimal(20), Decimal("0.20")),
     "claude-sonnet-5-5": ModelPrice(Decimal(2), Decimal(10), Decimal("0.20")),
-    # Featherless (ADR-0011), /v1/models em 2026-11-08; sem cache de prompt
+    # Featherless (ADR-0013), /v1/models em 2026-11-08; sem cache de prompt
     "deepseek-ai/DeepSeek-V3.1": ModelPrice(Decimal("0.285"), Decimal(1), Decimal(0)),
     "zai-org/GLM-4.6": ModelPrice(Decimal("0.55"), Decimal("2.2"), Decimal(0)),
     "moonshotai/Kimi-K2-Instruct-0905": ModelPrice(Decimal("0.6"), Decimal("2.5"), Decimal(0)),

@@ -1,4 +1,4 @@
-"""Ingestão Drive/Notion → ledger (ADR-0010), com Postgres real e o role do worker."""
+"""Ingestão Drive/Notion → ledger (ADR-0012), com Postgres real e o role do worker."""
 
 from uuid import UUID
 

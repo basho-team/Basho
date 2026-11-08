@@ -1,6 +1,6 @@
 """Garante que os CHECKs congelados das migrações acompanham os enums do contrato.
 
-A 0007 redefiniu os CHECKs de kind/source do ledger; é ela que precisa espelhar os enums.
+A 0009 redefiniu os CHECKs de kind/source do ledger; é ela que precisa espelhar os enums.
 """
 
 import importlib.util
@@ -11,11 +11,11 @@ from basho.evidence.contracts import EventKind, EventSource
 MIGRATION = (
     Path(__file__).resolve().parents[1] / "migrations" / "versions" / "0001_evidence_events.py"
 )
-LEDGER_CHECKS = MIGRATION.with_name("0007_document_sources.py")
+LEDGER_CHECKS = MIGRATION.with_name("0009_document_sources.py")
 
 
 def _load_migration() -> object:
-    spec = importlib.util.spec_from_file_location("migration_0007", LEDGER_CHECKS)
+    spec = importlib.util.spec_from_file_location("migration_0009", LEDGER_CHECKS)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)

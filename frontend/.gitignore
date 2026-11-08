@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Sess?es locais da demonstra??o (n?o versionar)
+/.local-demo/
+
+/dev-local.out.log
+/dev-local.err.log
