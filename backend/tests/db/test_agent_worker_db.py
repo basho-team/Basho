@@ -7,9 +7,11 @@ from uuid import UUID, uuid4
 
 import anthropic
 import httpx2
+import psycopg
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from psycopg import sql
 from sqlalchemy import text
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import ProgrammingError
@@ -18,20 +20,32 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from basho.agent.artifacts import ResearchReportDraft
 from basho.agent.llm import ModelSettings
 from basho.agent.maker import PERSIST_FAILED, MakerResult, MakerStatus
-from basho.agent.run_service import AgentRunService, ResearchReportRequest
+from basho.agent.run_service import (
+    MAX_ACTIVE_RUNS_PER_REQUESTER,
+    AgentRunService,
+    ResearchReportRequest,
+)
 from basho.agent.run_store import RunStore
 from basho.agent.runs import RunError, RunStatus
 from basho.agent.sessions import PersistenceTransaction
 from basho.agent.worker import Worker, WorkerConfig
 from basho.config import Settings
-from basho.db import tenant_session
+from basho.db import (
+    API_ROLE,
+    WORKER_ROLE,
+    DatabaseRoleSeparationError,
+    assert_process_role,
+    create_engine,
+    tenant_session,
+)
 from basho.evidence import EvidenceService
 from basho.evidence.contracts import EventKind
 from basho.main import create_app
 from conftest import VALID_ENV
+from db_support import drop_login_role, provision_login_role, psycopg_dsn
 from evidence_factories import make_event
 from maker_support import FakeClient, FixedVerifier, final, tool_call
-from report_factories import report
+from report_factories import RESEARCHER, report
 
 pytestmark = pytest.mark.db
 
@@ -80,6 +94,7 @@ async def _enqueue(
         period=draft.period,
         requested_by=uuid4(),
         idempotency_key=key,
+        may_act_for_others=True,  # como o gerente
         is_synthetic=True,
     )
     async with tenant_session(api, tenant_id) as session:
@@ -116,7 +131,10 @@ async def test_two_workers_never_claim_the_same_run(
     tenant_id, project_id = uuid4(), uuid4()
     draft = await _seed(session_factory, tenant_id, project_id)
     first_id = await _enqueue(session_factory, tenant_id, draft)
-    second_id = await _enqueue(session_factory, tenant_id, draft)
+    other_period = draft.period.model_copy(update={"end": draft.period.end - timedelta(days=1)})
+    second_id = await _enqueue(
+        session_factory, tenant_id, draft.model_copy(update={"period": other_period})
+    )
     later = datetime.now(UTC) + timedelta(seconds=1)
 
     # Act: o primeiro worker segura o lock enquanto o segundo tenta reservar
@@ -338,13 +356,17 @@ async def http(api_url: URL, api_tenant: UUID) -> AsyncIterator[AsyncClient]:
         yield client
 
 
-def _headers(**extra: str) -> dict[str, str]:
-    return {
-        "X-Basho-User-Id": str(uuid4()),
-        "X-Basho-Role": "researcher",
+def _headers(
+    user_id: UUID = RESEARCHER, role: str = "researcher", idempotency_key: str | None = None
+) -> dict[str, str]:
+    headers = {
+        "X-Basho-User-Id": str(user_id),
+        "X-Basho-Role": role,
         "X-Basho-Identity-Secret": IDENTITY_SECRET,
-        **extra,
     }
+    if idempotency_key is not None:
+        headers["Idempotency-Key"] = idempotency_key
+    return headers
 
 
 def _body(draft: ResearchReportDraft) -> dict[str, Any]:
@@ -391,7 +413,7 @@ async def test_api_is_idempotent_by_header(
     # Arrange
     project_id = uuid4()
     draft = await _seed(session_factory, api_tenant, project_id)
-    headers = _headers(**{"Idempotency-Key": "demo:relatorio-outubro"})
+    headers = _headers(idempotency_key="demo:relatorio-outubro")
     url = f"/api/v1/projects/{project_id}/agent-runs"
 
     # Act
@@ -429,3 +451,120 @@ async def test_api_rejects_untrusted_or_invalid_requests(
 async def test_unknown_run_is_404(http: AsyncClient) -> None:
     response = await http.get(f"/api/v1/agent-runs/{uuid4()}")
     assert response.status_code == 404
+
+
+async def test_same_active_task_returns_the_same_run_without_a_key(
+    http: AsyncClient, api_tenant: UUID, session_factory: Factory
+) -> None:
+    # Arrange
+    project_id = uuid4()
+    draft = await _seed(session_factory, api_tenant, project_id)
+    url = f"/api/v1/projects/{project_id}/agent-runs"
+
+    # Act
+    first = await http.post(url, json=_body(draft), headers=_headers())
+    second = await http.post(url, json=_body(draft), headers=_headers())
+
+    # Assert: um run ativo por tarefa (teto de custo)
+    assert (first.status_code, second.status_code) == (202, 200)
+    assert first.json()["id"] == second.json()["id"]
+
+
+async def test_requester_is_capped_on_active_runs(
+    http: AsyncClient, api_tenant: UUID, session_factory: Factory
+) -> None:
+    # Arrange: tarefas diferentes (períodos diferentes) do mesmo pesquisador
+    project_id = uuid4()
+    draft = await _seed(session_factory, api_tenant, project_id)
+    url = f"/api/v1/projects/{project_id}/agent-runs"
+
+    def body(day: int) -> dict[str, Any]:
+        period = draft.period.model_copy(update={"end": draft.period.start + timedelta(days=day)})
+        return {"researcher_id": str(RESEARCHER), "period": period.model_dump(mode="json")}
+
+    # Act
+    statuses = [
+        (await http.post(url, json=body(day), headers=_headers())).status_code
+        for day in range(MAX_ACTIVE_RUNS_PER_REQUESTER + 1)
+    ]
+
+    # Assert
+    assert statuses == [202] * MAX_ACTIVE_RUNS_PER_REQUESTER + [429]
+
+
+async def test_idempotency_key_reused_for_another_task_conflicts(
+    http: AsyncClient, api_tenant: UUID, session_factory: Factory
+) -> None:
+    # Arrange
+    project_id = uuid4()
+    draft = await _seed(session_factory, api_tenant, project_id)
+    url = f"/api/v1/projects/{project_id}/agent-runs"
+    headers = _headers(idempotency_key="demo:chave-reusada")
+    other = draft.period.model_copy(update={"end": draft.period.start})
+
+    # Act
+    await http.post(url, json=_body(draft), headers=headers)
+    reused = await http.post(
+        url,
+        json={"researcher_id": str(RESEARCHER), "period": other.model_dump(mode="json")},
+        headers=headers,
+    )
+
+    # Assert
+    assert reused.status_code == 409
+
+
+@pytest.mark.parametrize(
+    ("user_id", "role", "expected"),
+    [(uuid4(), "researcher", 403), (uuid4(), "manager", 202), (RESEARCHER, "researcher", 202)],
+    ids=["researcher_for_another", "manager_for_anyone", "researcher_for_self"],
+)
+async def test_only_managers_request_reports_for_other_researchers(
+    http: AsyncClient,
+    api_tenant: UUID,
+    session_factory: Factory,
+    user_id: UUID,
+    role: str,
+    expected: int,
+) -> None:
+    # Arrange
+    project_id = uuid4()
+    draft = await _seed(session_factory, api_tenant, project_id)
+
+    # Act
+    response = await http.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json=_body(draft),
+        headers=_headers(user_id=user_id, role=role),
+    )
+
+    # Assert
+    assert response.status_code == expected
+
+
+async def test_process_role_rejects_a_login_in_both_groups(
+    migrated_ledger_url: URL, api_url: URL
+) -> None:
+    # Arrange: login de teste membro de basho_api **e** de basho_worker
+    login = f"basho_test_dual_{uuid4().hex[:8]}"
+    url = provision_login_role(migrated_ledger_url, login, "basho_api")
+    with psycopg.connect(
+        psycopg_dsn(migrated_ledger_url, migrated_ledger_url.database or "")
+    ) as admin:
+        admin.execute(sql.SQL("GRANT basho_worker TO {}").format(sql.Identifier(login)))
+    engine = create_engine(url.render_as_string(hide_password=False))
+    api_only = create_engine(api_url.render_as_string(hide_password=False))
+
+    # Act / Assert
+    try:
+        with pytest.raises(DatabaseRoleSeparationError):
+            await assert_process_role(engine, required=WORKER_ROLE, forbidden=API_ROLE)
+        with pytest.raises(DatabaseRoleSeparationError):
+            await assert_process_role(engine, required=API_ROLE, forbidden=WORKER_ROLE)
+        await assert_process_role(api_only, required=API_ROLE, forbidden=WORKER_ROLE)
+        with pytest.raises(DatabaseRoleSeparationError):
+            await assert_process_role(api_only, required=WORKER_ROLE, forbidden=API_ROLE)
+    finally:
+        await engine.dispose()
+        await api_only.dispose()
+        drop_login_role(migrated_ledger_url, login)

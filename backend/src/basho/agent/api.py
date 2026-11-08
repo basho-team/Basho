@@ -15,16 +15,29 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from basho.agent.artifacts import ReportingPeriod
-from basho.agent.run_service import AgentRunService, ResearchReportRequest, RunDetails
-from basho.agent.run_store import RunNotFoundError
+from basho.agent.run_service import (
+    AgentRunService,
+    ResearchReportRequest,
+    RunDetails,
+    RunNotAllowedError,
+)
+from basho.agent.run_store import (
+    IdempotencyConflictError,
+    RunNotFoundError,
+    TooManyActiveRunsError,
+)
 from basho.agent.runs import IDEMPOTENCY_KEY_PATTERN, RunError, RunStatus
 from basho.db import tenant_session
 from basho.reports.api import Reviewer, current_reviewer
+from basho.reports.versions import ReviewerRole
 
 router = APIRouter(tags=["agent"])
 
 NOT_FOUND_DETAIL = "run não encontrado"
 INVALID_DETAIL = "tarefa inválida para este projeto"
+FORBIDDEN_DETAIL = "sem permissão para pedir relatório deste pesquisador"
+CONFLICT_DETAIL = "Idempotency-Key já usada para outra tarefa"
+TOO_MANY_DETAIL = "limite de runs em andamento atingido; aguarde a conclusão"
 IDEMPOTENCY_HEADER = "Idempotency-Key"
 
 
@@ -119,7 +132,8 @@ async def create_agent_run(
         default=None, alias=IDEMPOTENCY_HEADER, pattern=IDEMPOTENCY_KEY_PATTERN
     ),
 ) -> AgentRunOut:
-    """Humano dispara; o worker executa. Mesma `Idempotency-Key` → o mesmo run (200)."""
+    """Humano dispara; o worker executa. Mesma tarefa ativa ou mesma `Idempotency-Key` → o
+    mesmo run (200). Pesquisador só pede o próprio relatório; gerente, de qualquer um."""
     tenant_id = _tenant(request)
     run_request = ResearchReportRequest(
         project_id=project_id,
@@ -127,12 +141,19 @@ async def create_agent_run(
         period=body.period,
         requested_by=requester.user_id,
         idempotency_key=idempotency_key,
+        may_act_for_others=requester.role is ReviewerRole.MANAGER,
     )
     try:
         async with tenant_session(request.app.state.session_factory, tenant_id) as session:
             service = AgentRunService(session)
             stored, created = await service.request_research_report(tenant_id, run_request)
             details = await service.get(tenant_id, stored.run.id)
+    except RunNotAllowedError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=FORBIDDEN_DETAIL) from None
+    except IdempotencyConflictError:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=CONFLICT_DETAIL) from None
+    except TooManyActiveRunsError:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail=TOO_MANY_DETAIL) from None
     except ValueError:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=INVALID_DETAIL) from None
     if not created:

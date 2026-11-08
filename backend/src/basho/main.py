@@ -8,7 +8,14 @@ from pydantic import BaseModel, ConfigDict
 
 from basho.agent.api import router as agent_router
 from basho.config import Settings, get_settings
-from basho.db import assert_least_privilege, create_engine, create_session_factory
+from basho.db import (
+    API_ROLE,
+    WORKER_ROLE,
+    assert_least_privilege,
+    assert_process_role,
+    create_engine,
+    create_session_factory,
+)
 from basho.logging import configure_logging, get_logger
 from basho.reports.api import router as reports_router
 
@@ -36,6 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # Aborta o startup se DATABASE_URL for superuser, BYPASSRLS ou dono (ADR-0006, #21).
         await assert_least_privilege(engine)
+        # E não pode ser também o login do worker (separação de papéis, ADR-0005).
+        await assert_process_role(engine, required=API_ROLE, forbidden=WORKER_ROLE)
         yield
         await engine.dispose()
 

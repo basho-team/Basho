@@ -19,6 +19,13 @@ from basho.agent.run_store import NewRun, RunStore, StoredCall, StoredRun
 from basho.agent.runs import DEFAULT_MAX_ATTEMPTS
 from basho.agent.tasks import TaskKind, get_profile
 
+MAX_ACTIVE_RUNS_PER_REQUESTER = 3
+"""Runs `queued`/`running` por solicitante: teto de custo do disparo (ADR-0006 §6)."""
+
+
+class RunNotAllowedError(PermissionError):
+    """O solicitante não pode disparar esta tarefa."""
+
 
 @dataclass(frozen=True, slots=True)
 class ResearchReportRequest:
@@ -28,6 +35,8 @@ class ResearchReportRequest:
     requested_by: UUID
     idempotency_key: str | None = None
     is_synthetic: bool = False
+    may_act_for_others: bool = False
+    """Só o gerente pede relatório de outro pesquisador; o pesquisador, só o próprio."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +60,8 @@ class AgentRunService:
         self, tenant_id: UUID, request: ResearchReportRequest
     ) -> tuple[StoredRun, bool]:
         """Enfileira um `research_report`. Devolve (run, criado agora?)."""
+        if not request.may_act_for_others and request.researcher_id != request.requested_by:
+            raise RunNotAllowedError("pesquisador só pode pedir o próprio relatório")
         profile = get_profile(TaskKind.RESEARCH_REPORT)
         task_input = {
             "project_id": str(request.project_id),
@@ -76,7 +87,9 @@ class AgentRunService:
             requested_by=request.requested_by,
             is_synthetic=request.is_synthetic,
         )
-        return await self._store.enqueue(new, at=datetime.now(UTC))
+        return await self._store.enqueue(
+            new, at=datetime.now(UTC), max_active_per_requester=MAX_ACTIVE_RUNS_PER_REQUESTER
+        )
 
     async def get(self, tenant_id: UUID, run_id: UUID) -> RunDetails:
         stored = await self._store.get(tenant_id, run_id)

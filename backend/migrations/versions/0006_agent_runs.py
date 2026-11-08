@@ -69,6 +69,7 @@ def _create_tables() -> None:
             correlation_id         uuid        NOT NULL,
             parent_run_id          uuid,
             idempotency_key        text        NOT NULL,
+            dedupe_key             text        NOT NULL,
             attempts               integer     NOT NULL DEFAULT 0,
             max_attempts           integer     NOT NULL,
             error                  jsonb,
@@ -103,6 +104,15 @@ def _create_tables() -> None:
         "WHERE status = 'queued'"
     )
     op.execute("CREATE INDEX ix_agent_runs_tenant_project ON agent_runs (tenant_id, project_id)")
+    # Limite de custo (ADR-0006 §6): no máximo um run ativo por tarefa (hash de tipo+entrada).
+    op.execute(
+        "CREATE UNIQUE INDEX uq_agent_runs_active_task ON agent_runs (tenant_id, dedupe_key) "
+        "WHERE status IN ('queued', 'running')"
+    )
+    op.execute(
+        "CREATE INDEX ix_agent_runs_active_requester ON agent_runs (tenant_id, requested_by) "
+        "WHERE status IN ('queued', 'running')"
+    )
     op.execute(
         """
         CREATE TABLE agent_calls (
@@ -165,9 +175,13 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    op.execute("ALTER TABLE agent_calls NO FORCE ROW LEVEL SECURITY")
+    for table in _TABLES:
+        op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
     if bind.execute(sa.text("SELECT EXISTS (SELECT 1 FROM agent_calls)")).scalar_one():
-        message = "downgrade recusado: agent_calls contém linhas e é append-only"
-        raise RuntimeError(message)
+        raise RuntimeError("downgrade recusado: agent_calls contém linhas e é append-only")
+    # agent_runs é estado de execução (não evidência); recusa se houver run em andamento.
+    running = sa.text("SELECT EXISTS (SELECT 1 FROM agent_runs WHERE status = 'running')")
+    if bind.execute(running).scalar_one():
+        raise RuntimeError("downgrade recusado: há runs em execução em agent_runs")
     op.execute("DROP TABLE agent_calls")
     op.execute("DROP TABLE agent_runs")

@@ -76,6 +76,7 @@ class AgentRunRow(Base):
     correlation_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True))
     parent_run_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
     idempotency_key: Mapped[str] = mapped_column(Text)
+    dedupe_key: Mapped[str] = mapped_column(Text)
     attempts: Mapped[int] = mapped_column(Integer)
     max_attempts: Mapped[int] = mapped_column(Integer)
     # none_as_null: `None` vira SQL NULL (não JSON `null`), como os CHECKs esperam.

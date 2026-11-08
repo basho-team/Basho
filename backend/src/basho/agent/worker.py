@@ -215,7 +215,9 @@ class Worker:
             logger.error(
                 "agent_run_commit_failed", run_id=str(stored.run.id), error_type=type(exc).__name__
             )
-            error = RunError(code=COMMIT_FAILED, message=type(exc).__name__, retryable=True)
+            # Não retryable: se o COMMIT chegou ao servidor e só a resposta se perdeu,
+            # refazer duplicaria artefato e verificação no ledger.
+            error = RunError(code=COMMIT_FAILED, message=type(exc).__name__, retryable=False)
             await self._fail(stored, error, result)
             return
         logger.info(
@@ -250,15 +252,17 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
 
     from basho.agent.checker import ClaudeVerifier, FallbackVerifier, OpenAICompatibleVerifier
     from basho.db import (
+        API_ROLE,
+        WORKER_ROLE,
         assert_least_privilege,
-        assert_member_of,
+        assert_process_role,
         create_engine,
         create_session_factory,
     )
 
     engine = create_engine(settings.database_url.get_secret_value())
     await assert_least_privilege(engine)
-    await assert_member_of(engine, "basho_worker")
+    await assert_process_role(engine, required=WORKER_ROLE, forbidden=API_ROLE)
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
     verifier = FallbackVerifier(
         OpenAICompatibleVerifier(
@@ -281,8 +285,17 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
     )
     logger.info("agent_worker_started")
     try:
+        failures = 0
         while True:
-            if await worker.process_one() is None:
+            try:
+                processed = await worker.process_one()
+                failures = 0
+            except Exception as exc:  # banco fora, StaleRunError...: loga e espera, sem morrer
+                failures += 1
+                logger.error("agent_worker_loop_error", error_type=type(exc).__name__)
+                await asyncio.sleep(retry_delay(failures).total_seconds())
+                continue
+            if processed is None:
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
     finally:
         await engine.dispose()
