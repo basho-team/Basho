@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from enum import StrEnum
 from typing import Any, Self
 from uuid import UUID
@@ -71,12 +71,27 @@ class InputSummary(BaseModel):
     size_bytes: int = Field(ge=0)
 
     @classmethod
-    def of(cls, arguments: Mapping[str, Any]) -> InputSummary:
-        """Resume `arguments`. Chave fora de `CODE_PATTERN` vira `invalid_key` (pode ser PII)."""
-        keys = sorted(
-            {key if _CODE_RE.fullmatch(key) else INVALID_KEY_PLACEHOLDER for key in arguments}
-        )[:MAX_INPUT_KEYS]
-        serialized = json.dumps(arguments, sort_keys=True, ensure_ascii=False, default=str)
+    def of(
+        cls, arguments: Mapping[str, Any], *, allowed_keys: Collection[str] | None = None
+    ) -> InputSummary:
+        """Resume `arguments` sem nunca falhar (a chamada não pode ficar sem audit).
+
+        Chave fora de `CODE_PATTERN` ou, se `allowed_keys` for dado, fora do schema da tool vira
+        `invalid_key` (o nome pode carregar PII). Entrada não serializável → `size_bytes = 0`.
+        """
+
+        def safe(key: object) -> str:
+            if not isinstance(key, str) or not _CODE_RE.fullmatch(key):
+                return INVALID_KEY_PLACEHOLDER
+            if allowed_keys is not None and key not in allowed_keys:
+                return INVALID_KEY_PLACEHOLDER
+            return key
+
+        keys = sorted({safe(key) for key in arguments})[:MAX_INPUT_KEYS]
+        try:
+            serialized = json.dumps(arguments, sort_keys=True, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return cls(keys=tuple(keys), size_bytes=0)
         return cls(keys=tuple(keys), size_bytes=len(serialized.encode("utf-8")))
 
 

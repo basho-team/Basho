@@ -6,7 +6,7 @@ import psycopg
 import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import URL
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from basho.agent.approvals import (
@@ -272,3 +272,70 @@ def test_downgrade_is_refused_when_audit_log_has_rows(migration_db_url: URL) -> 
     # Assert
     assert result.returncode != 0
     assert APPEND_ONLY in result.stderr
+
+
+async def test_worker_role_cannot_decide_its_own_approval(session_factory: Factory) -> None:
+    # Arrange: o worker (processo do agente) cria o pedido
+    tenant_id = uuid4()
+    async with tenant_session(session_factory, tenant_id) as session:
+        await session.execute(text("SET LOCAL ROLE basho_worker"))
+        request = await PostgresApprovalStore(session).create(_request(tenant_id))
+
+    # Act / Assert: mas não pode inserir a decisão (só basho_api, ADR-0005)
+    with pytest.raises(DBAPIError, match="permission denied"):
+        async with tenant_session(session_factory, tenant_id) as session:
+            await session.execute(text("SET LOCAL ROLE basho_worker"))
+            await PostgresApprovalStore(session).decide(
+                tenant_id, request.id, ApprovalDecision.APPROVED, uuid4()
+            )
+
+
+async def test_api_role_can_record_human_decision(session_factory: Factory) -> None:
+    # Arrange
+    tenant_id = uuid4()
+    async with tenant_session(session_factory, tenant_id) as session:
+        request = await PostgresApprovalStore(session).create(_request(tenant_id))
+
+    # Act
+    async with tenant_session(session_factory, tenant_id) as session:
+        await session.execute(text("SET LOCAL ROLE basho_api"))
+        view = await PostgresApprovalStore(session).decide(
+            tenant_id, request.id, ApprovalDecision.REJECTED, uuid4()
+        )
+
+    # Assert
+    assert view.state is ApprovalState.REJECTED
+
+
+@pytest.mark.parametrize(
+    ("decision", "outcome", "approval_id"),
+    [
+        ("denied", "ok", None),  # executado sem ser permitido
+        ("pending_approval", "not_executed", None),  # pendente sem pedido
+        ("approved", "not_executed", None),  # decisão humana num tool_call
+    ],
+)
+async def test_db_rejects_inconsistent_audit_rows(
+    session_factory: Factory, decision: str, outcome: str, approval_id: UUID | None
+) -> None:
+    # Arrange
+    tenant_id = uuid4()
+
+    # Act / Assert
+    with pytest.raises(IntegrityError, match="ck_audit_log_"):
+        async with tenant_session(session_factory, tenant_id) as session:
+            await session.execute(
+                text(
+                    "INSERT INTO audit_log (id, tenant_id, event_type, actor_type, run_id, tool, "
+                    "level, decision, outcome, input_size_bytes, approval_id) VALUES (:id, :t, "
+                    "'tool_call', 'agent', :r, 'github_list_commits', 'read', :d, :o, 0, :a)"
+                ),
+                {
+                    "id": uuid4(),
+                    "t": tenant_id,
+                    "r": uuid4(),
+                    "d": decision,
+                    "o": outcome,
+                    "a": approval_id,
+                },
+            )

@@ -7,6 +7,7 @@ duplicada ou com nível diferente do contrato (`MVP_TOOLS`) não entra.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 
 from pydantic import ValidationError
@@ -33,6 +34,18 @@ def _validated_spec(tool: object) -> ToolSpec:
         raise ToolRegistrationError(msg) from None
 
 
+@dataclass(frozen=True, slots=True)
+class RegisteredTool:
+    """Tool + a spec **validada e congelada no registro**.
+
+    A policy usa sempre esta `spec`, nunca `tool.spec` lido na hora da chamada: trocar o
+    atributo depois do registro não muda o nível nem a exigência de aprovação.
+    """
+
+    spec: ToolSpec
+    tool: Tool
+
+
 class ToolRegistry:
     """Tools disponíveis ao agente, indexadas por nome. Nunca contém tools `formal`."""
 
@@ -43,7 +56,7 @@ class ToolRegistry:
         contract: Mapping[str, PermissionLevel] = MVP_TOOLS,
     ) -> None:
         self._contract = contract
-        self._tools: dict[str, Tool] = {}
+        self._tools: dict[str, RegisteredTool] = {}
         for tool in tools:
             self.register(tool)
 
@@ -59,19 +72,19 @@ class ToolRegistry:
         if expected is not None and expected is not spec.level:
             msg = f"tool {spec.name!r} declara {spec.level.value}, contrato exige {expected.value}"
             raise ToolRegistrationError(msg)
-        self._tools[spec.name] = tool
+        self._tools[spec.name] = RegisteredTool(spec=spec, tool=tool)
 
-    def get(self, name: str) -> Tool | None:
+    def get(self, name: str) -> RegisteredTool | None:
         return self._tools.get(name)
 
     def levels(self) -> Mapping[str, PermissionLevel]:
         """Nome → nível, no formato aceito por `validate_allowlist`."""
-        return MappingProxyType({name: tool.spec.level for name, tool in self._tools.items()})
+        return MappingProxyType({name: entry.spec.level for name, entry in self._tools.items()})
 
     def specs_for(self, profile: TaskProfile) -> tuple[ToolSpec, ...]:
         """Specs expostas ao Maker para `profile`: allowlist ∩ registro ∩ níveis permitidos."""
         return tuple(
-            tool.spec
-            for name, tool in sorted(self._tools.items())
-            if name in profile.allowed_tools and tool.spec.level in AGENT_ALLOWED_LEVELS
+            entry.spec
+            for name, entry in sorted(self._tools.items())
+            if name in profile.allowed_tools and entry.spec.level in AGENT_ALLOWED_LEVELS
         )

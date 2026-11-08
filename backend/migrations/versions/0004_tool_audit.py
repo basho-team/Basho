@@ -2,11 +2,20 @@
 
 As três tabelas são append-only (trigger bloqueia UPDATE/DELETE/TRUNCATE), têm ``tenant_id``
 com RLS forçada e os roles da aplicação só recebem SELECT e INSERT. A aprovação é derivada:
-pedido sem linha em ``tool_approval_decisions`` está pendente.
+pedido sem linha em ``tool_approval_decisions`` está pendente. Só ``basho_api`` (endpoint
+humano) insere decisões; o ``basho_worker`` (processo do agente) não pode aprovar o próprio
+pedido (ADR-0005).
+
+LGPD (ADR-0006): ``tool_approval_requests.arguments`` guarda a entrada completa proposta pelo
+Maker, porque o humano precisa revisá-la e o worker precisa dela para executar depois da
+aprovação. Pode conter conteúdo externo ou dado pessoal: nunca vai para log nem para o audit,
+e só volta ao Maker envelopado como dado não confiável. Retenção/expurgo ficam para a política
+de retenção do tenant (backlog).
 
 Cadeia combinada: 0002_rls_roles (#21) → 0003_reports (#39) → 0004. Enquanto 0002/0003 não
-estiverem na main, ``down_revision`` aponta para 0001; quem mergear depois ajusta para 0003.
-Os roles são criados só se ainda não existirem (a 0002 é a dona deles).
+estiverem na main, ``down_revision`` aponta para 0001; **antes do merge** ajustar para a última
+migração já na main (0003, ou 0002 se reports ainda não entrou) — duas heads quebram
+``alembic upgrade head``. Os roles são criados só se ainda não existirem (a 0002 é a dona deles).
 
 Revision ID: 0004
 Revises: 0001
@@ -34,6 +43,12 @@ _CODE = "^[a-z][a-z0-9_]{2,63}$"
 
 _TABLES = ("audit_log", "tool_approval_requests", "tool_approval_decisions")
 _APP_ROLES = ("basho_api", "basho_worker")
+# Privilégios por tabela e role: nunca UPDATE/DELETE/TRUNCATE. Decisão de aprovação só pela API.
+_GRANTS: dict[str, dict[str, str]] = {
+    "audit_log": {"basho_api": "SELECT, INSERT", "basho_worker": "SELECT, INSERT"},
+    "tool_approval_requests": {"basho_api": "SELECT, INSERT", "basho_worker": "SELECT, INSERT"},
+    "tool_approval_decisions": {"basho_api": "SELECT, INSERT", "basho_worker": "SELECT"},
+}
 _TENANT_EXPR = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 
 
@@ -68,6 +83,18 @@ def _create_tables() -> None:
             CONSTRAINT ck_audit_log_tool CHECK (tool ~ '{_CODE}'),
             CONSTRAINT ck_audit_log_reason_code
                 CHECK (reason_code IS NULL OR reason_code ~ '{_CODE}'),
+            -- Invariantes de NewAuditEntry também no banco (INSERT direto pelos roles da app)
+            CONSTRAINT ck_audit_log_event_decision CHECK (
+                (event_type = 'tool_call' AND run_id IS NOT NULL
+                    AND decision IN ('allowed', 'denied', 'pending_approval'))
+                OR (event_type = 'approval_decided' AND decision IN ('approved', 'rejected'))
+            ),
+            CONSTRAINT ck_audit_log_executed_only_if_allowed
+                CHECK (outcome = 'not_executed' OR decision = 'allowed'),
+            CONSTRAINT ck_audit_log_pending_has_approval
+                CHECK (decision <> 'pending_approval' OR approval_id IS NOT NULL),
+            CONSTRAINT ck_audit_log_level_only_null_if_denied
+                CHECK (level IS NOT NULL OR decision = 'denied'),
             CONSTRAINT ck_audit_log_input_size CHECK (input_size_bytes >= 0)
         )
         """
@@ -129,10 +156,9 @@ def _protect_tables() -> None:
     for role in _APP_ROLES:
         create_if_missing = (
             f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') "  # noqa: S608
-            f"THEN CREATE ROLE {role} NOLOGIN; END IF; END $$"
+            f"THEN CREATE ROLE {role} NOLOGIN NOSUPERUSER NOBYPASSRLS; END IF; END $$"
         )
         op.execute(create_if_missing)
-    roles = ", ".join(_APP_ROLES)
     for table in _TABLES:
         op.execute(
             f"CREATE TRIGGER trg_{table}_append_only BEFORE UPDATE OR DELETE ON {table} "
@@ -149,7 +175,8 @@ def _protect_tables() -> None:
             f"USING (tenant_id = {_TENANT_EXPR}) WITH CHECK (tenant_id = {_TENANT_EXPR})"
         )
         op.execute(f"REVOKE ALL ON {table} FROM PUBLIC")
-        op.execute(f"GRANT SELECT, INSERT ON {table} TO {roles}")
+        for role, privileges in _GRANTS[table].items():
+            op.execute(f"GRANT {privileges} ON {table} TO {role}")
 
 
 def upgrade() -> None:
@@ -160,6 +187,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     for table in _TABLES:
+        # Sob FORCE RLS e sem app.tenant_id, um dono não-superuser veria 0 linhas e o DROP
+        # apagaria o histórico. Sem FORCE, o dono enxerga tudo. Se o downgrade for recusado, a
+        # transação da migração é desfeita e o FORCE volta.
+        op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
         if bind.execute(sa.text(f"SELECT EXISTS (SELECT 1 FROM {table})")).scalar_one():  # noqa: S608
             message = (
                 f"downgrade recusado: {table} contém linhas e é append-only; "

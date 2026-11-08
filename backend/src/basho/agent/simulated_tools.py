@@ -174,6 +174,10 @@ class SimulatedInternalStore:
         return tuple(self.records.get(tenant_id, ()))
 
 
+_EVENT_IDENTIFIERS = ("id", "kind", "project_id", "created_at")
+_EVENT_ID_ONLY = frozenset({"kind", "project_id", "created_at"})
+
+
 class QueryEventsArgs(_Args):
     project_id: UUID
     kinds: tuple[str, ...] | None = None
@@ -201,10 +205,22 @@ class LedgerQueryEvents:
             if event["project_id"] == str(args.project_id)
             and (args.kinds is None or event["kind"] in args.kinds)
         ][: args.limit]
+        # Rascunhos e pendências podem conter texto copiado de fonte externa (injeção de segunda
+        # ordem): só identificadores em `data`; o conteúdo volta como dado não confiável.
         return ToolResult(
             tool=self.spec.name,
             status=ToolCallStatus.OK,
-            data={"is_synthetic": True, "events": events},
+            data={
+                "is_synthetic": True,
+                "events": [{key: event[key] for key in _EVENT_IDENTIFIERS} for event in events],
+            },
+            untrusted_data=_untrusted(
+                [
+                    {key: value for key, value in event.items() if key not in _EVENT_ID_ONLY}
+                    | {"id": event["id"]}
+                    for event in events
+                ]
+            ),
         )
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -27,6 +28,7 @@ from basho.agent.tools import (
     ToolResult,
 )
 from basho.audit import (
+    CODE_PATTERN,
     ActorType,
     AuditDecision,
     AuditEventType,
@@ -38,6 +40,9 @@ from basho.audit import (
 from basho.logging import get_logger
 
 DEFAULT_TOOL_TIMEOUT_SECONDS = 30.0
+MAX_APPROVAL_ARGUMENTS_BYTES = 16_384
+"""Teto da entrada guardada num pedido de aprovação (o humano precisa conseguir revisá-la)."""
+_CODE_RE = re.compile(CODE_PATTERN)
 UNKNOWN_TOOL_AUDIT_NAME = "unknown_tool"
 UNTRUSTED_OPEN = '<untrusted_data tool="{tool}">'
 UNTRUSTED_CLOSE = "</untrusted_data>"
@@ -49,9 +54,11 @@ class DenialReason(StrEnum):
     UNKNOWN_TOOL = "unknown_tool"
     LEVEL_NOT_ALLOWED = "level_not_allowed"
     NOT_IN_PROFILE = "not_in_profile"
+    ARGUMENTS_TOO_LARGE = "arguments_too_large"
 
 
 class FailureReason(StrEnum):
+    CANCELLED = "cancelled"
     TOOL_TIMEOUT = "tool_timeout"
     TOOL_FAILED = "tool_failed"
     TOOL_ERROR = "tool_error"
@@ -97,11 +104,12 @@ class ToolPolicy:
     async def execute(
         self, context: ToolCallContext, tool_name: str, arguments: Mapping[str, Any]
     ) -> ToolResult:
-        summary = InputSummary.of(arguments)
-        tool = self._registry.get(tool_name)
-        if tool is None:
+        entry = self._registry.get(tool_name)
+        if entry is None:
+            summary = InputSummary.of(arguments, allowed_keys=())
             return await self._deny(context, tool_name, None, summary, DenialReason.UNKNOWN_TOOL)
-        spec = tool.spec
+        spec = entry.spec  # spec congelada no registro, nunca `entry.tool.spec`
+        summary = InputSummary.of(arguments, allowed_keys=_schema_keys(spec.input_schema))
         if spec.level not in AGENT_ALLOWED_LEVELS:
             return await self._deny(
                 context, spec.name, spec.level, summary, DenialReason.LEVEL_NOT_ALLOWED
@@ -113,9 +121,26 @@ class ToolPolicy:
         if spec.level is PermissionLevel.EXTERNAL and (
             spec.requires_approval or self._external_requires_approval
         ):
+            if summary.size_bytes > MAX_APPROVAL_ARGUMENTS_BYTES:
+                return await self._deny(
+                    context, spec.name, spec.level, summary, DenialReason.ARGUMENTS_TOO_LARGE
+                )
             return await self._request_approval(context, spec.name, arguments, summary)
 
-        result, failure = await self._run(tool, context, dict(arguments))
+        try:
+            result, failure = await self._run(entry.tool, spec.name, context, dict(arguments))
+        except asyncio.CancelledError:
+            # A tool pode já ter tido efeito: a chamada não pode ficar sem audit.
+            await self._record(
+                context,
+                spec.name,
+                spec.level,
+                AuditDecision.ALLOWED,
+                AuditOutcome.ERROR,
+                summary,
+                reason=FailureReason.CANCELLED,
+            )
+            raise
         outcome = AuditOutcome.OK if result.status is ToolCallStatus.OK else AuditOutcome.ERROR
         await self._record(
             context,
@@ -129,9 +154,8 @@ class ToolPolicy:
         return result
 
     async def _run(
-        self, tool: Tool, context: ToolCallContext, arguments: dict[str, Any]
+        self, tool: Tool, name: str, context: ToolCallContext, arguments: dict[str, Any]
     ) -> tuple[ToolResult, str | None]:
-        name = tool.spec.name
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 raw = await tool.run(str(context.tenant_id), arguments)
@@ -152,10 +176,14 @@ class ToolPolicy:
             }
         ):
             return _error(name, FailureReason.INVALID_RESULT), FailureReason.INVALID_RESULT
+        normalized: dict[str, Any] = {}
         if raw.untrusted_data is not None:
-            raw = ToolResult.model_validate(
-                raw.model_dump() | {"untrusted_data": envelope_untrusted(name, raw.untrusted_data)}
-            )
+            normalized["untrusted_data"] = envelope_untrusted(name, raw.untrusted_data)
+        if raw.error is not None and not _CODE_RE.fullmatch(raw.error):
+            # `error` chega ao Maker fora do envelope: só códigos, nunca texto do provedor.
+            normalized["error"] = FailureReason.TOOL_ERROR.value
+        if normalized:
+            raw = ToolResult.model_validate(raw.model_dump() | normalized)
         failure = FailureReason.TOOL_ERROR if raw.status is ToolCallStatus.ERROR else None
         return raw, failure
 
@@ -236,6 +264,11 @@ class ToolPolicy:
                 approval_id=approval_id,
             )
         )
+
+
+def _schema_keys(input_schema: Mapping[str, Any]) -> frozenset[str]:
+    properties = input_schema.get("properties")
+    return frozenset(properties) if isinstance(properties, Mapping) else frozenset()
 
 
 def _error(tool: str, reason: FailureReason) -> ToolResult:
