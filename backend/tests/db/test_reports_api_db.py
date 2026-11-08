@@ -21,7 +21,7 @@ pytestmark = pytest.mark.db
 
 PENDING_CLAIM = 3
 HYPOTHESIS = "Hipótese registrada: SMOTE reduz o viés de classe sem perda de recall."
-IDENTITY_SECRET = "test-identity-secret"  # noqa: S105 -- sintético
+IDENTITY_SECRET = "test-identity-secret-synthetic-0123456789"  # noqa: S105 -- sintético
 SECRET_HEADER = {"X-Basho-Identity-Secret": IDENTITY_SECRET}
 RESEARCHER_HEADERS = {
     "X-Basho-User-Id": str(RESEARCHER),
