@@ -247,7 +247,7 @@ export function ReportView({ ctx, current, canAct }: { ctx: DemoContext; current
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <VersionBody out={shown} evidence={evidence.data ?? []} />
         <div className="space-y-4">
-          <Checks key={shown.version.id} versionId={shown.version.id} />
+          <Checks key={`checks:${shown.version.id}`} versionId={shown.version.id} />
           {canAct && (
             <div className="space-y-2 rounded border border-zinc-200 p-3">
               <h3 className="text-sm font-medium">Confirmar texto da v{shown.version.number}</h3>
