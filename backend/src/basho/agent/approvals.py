@@ -188,7 +188,7 @@ class PostgresApprovalStore:
         found = (await self._session.execute(statement)).one_or_none()
         if found is None:
             raise ApprovalNotFoundError("pedido de aprovação não encontrado neste tenant")
-        request_row, decision_row = found.tuple()
+        request_row, decision_row = found
         request = _request_of(request_row)
         if decision_row is None:
             return ApprovalView(request=request, state=ApprovalState.PENDING)

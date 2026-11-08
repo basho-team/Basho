@@ -129,7 +129,7 @@ async def test_formal_tool_is_denied_even_if_it_reaches_the_registry() -> None:
 async def test_tool_outside_profile_allowlist_is_denied_and_not_executed() -> None:
     # Arrange: github_create_issue está registrada, mas fora do perfil research_report
     registry = build_simulated_registry(github_fixtures())
-    policy, audit, approvals = _policy(registry)
+    policy, audit, _ = _policy(registry)
 
     # Act
     result = await policy.execute(

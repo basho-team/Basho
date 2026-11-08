@@ -128,7 +128,7 @@ def _protect_tables() -> None:
     )
     for role in _APP_ROLES:
         create_if_missing = (
-            f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') "
+            f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') "  # noqa: S608
             f"THEN CREATE ROLE {role} NOLOGIN; END IF; END $$"
         )
         op.execute(create_if_missing)
