@@ -1,20 +1,20 @@
-import { FlaskConical, House, LayoutDashboard, Scale, type LucideIcon } from "lucide-react";
+import { FlaskConical, House, LayoutDashboard, Plug, Scale, type LucideIcon } from "lucide-react";
+import type { AppRole } from "@/lib/auth/shared";
 
 export interface NavItem {
   href: string;
   label: string;
-  /** Quem representa na demonstração (troca de papel não é autenticação). */
-  person?: string;
+  role?: AppRole;
   icon: LucideIcon;
-  /** Só ativo na rota exata (o início não pode ficar ativo em todas as telas). */
   exact?: boolean;
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { href: "/", label: "Início", icon: House, exact: true },
-  { href: "/pesquisador", label: "Pesquisador", person: "Ana Ribeiro / Bruno Costa", icon: FlaskConical },
-  { href: "/gerente", label: "Gerente", person: "Marina Duarte", icon: LayoutDashboard },
-  { href: "/fiscal", label: "Fiscal", person: "Rafael Lima", icon: Scale },
+  { href: "/", label: "Meu espaço", icon: House, exact: true },
+  { href: "/pesquisador", label: "Meus relatórios", role: "researcher", icon: FlaskConical },
+  { href: "/gerente", label: "Gestão do projeto", role: "manager", icon: LayoutDashboard },
+  { href: "/fiscal", label: "Análise fiscal", role: "fiscal", icon: Scale },
+  { href: "/integracoes", label: "Integrações", icon: Plug },
 ];
 
 export function isActive(item: NavItem, pathname: string | null): boolean {
@@ -23,5 +23,5 @@ export function isActive(item: NavItem, pathname: string | null): boolean {
 }
 
 export function activeItem(pathname: string | null): NavItem | undefined {
-  return NAV_ITEMS.find((item) => isActive(item, pathname));
+  return NAV_ITEMS.find(item => isActive(item, pathname));
 }
