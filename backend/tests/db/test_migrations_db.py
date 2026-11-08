@@ -131,3 +131,52 @@ def test_downgrade_is_refused_when_report_versions_has_rows(migration_db_url: UR
     assert result.returncode != 0
     assert "append-only" in result.stderr
     assert _report_tables_exist(migration_db_url) == [True, True, True]
+
+
+PROJECT_TABLES = (
+    "projects",
+    "activities",
+    "pending_items",
+    "pending_answers",
+    "artifact_approvals",
+)
+
+
+def _project_tables_exist(url: URL) -> list[bool]:
+    return [
+        bool(_scalar(url, f"SELECT to_regclass('public.{table}') IS NOT NULL"))
+        for table in PROJECT_TABLES
+    ]
+
+
+def test_projects_migration_is_reversible(migration_db_url: URL) -> None:
+    run_alembic(migration_db_url, "upgrade", "head")
+    assert _project_tables_exist(migration_db_url) == [True] * len(PROJECT_TABLES)
+
+    run_alembic(migration_db_url, "downgrade", "0004")
+    assert _project_tables_exist(migration_db_url) == [False] * len(PROJECT_TABLES)
+
+    run_alembic(migration_db_url, "upgrade", "head")
+    assert _project_tables_exist(migration_db_url) == [True] * len(PROJECT_TABLES)
+
+
+def test_downgrade_is_refused_when_projects_has_rows(migration_db_url: URL) -> None:
+    # Arrange
+    run_alembic(migration_db_url, "upgrade", "head")
+    dsn = migration_db_url.set(drivername="postgresql").render_as_string(hide_password=False)
+    with psycopg.connect(dsn) as connection:
+        connection.execute(
+            "SELECT set_config('app.tenant_id', '00000000-0000-0000-0000-0000000000a1', true)"
+        )
+        connection.execute(
+            "INSERT INTO projects (id, tenant_id, name) VALUES (gen_random_uuid(), "
+            "'00000000-0000-0000-0000-0000000000a1', 'Projeto sintético')"
+        )
+
+    # Act
+    result = run_alembic_raw(migration_db_url, "downgrade", "0004")
+
+    # Assert
+    assert result.returncode != 0
+    assert "append-only" in result.stderr
+    assert _project_tables_exist(migration_db_url) == [True] * len(PROJECT_TABLES)

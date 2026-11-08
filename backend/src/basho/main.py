@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from basho.config import Settings, get_settings
 from basho.db import assert_least_privilege, create_engine, create_session_factory
 from basho.logging import configure_logging, get_logger
+from basho.projects.api import router as projects_router
 from basho.reports.api import router as reports_router
 
 APP_TITLE = "Basho API"
@@ -43,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
     app.include_router(reports_router, prefix=API_PREFIX)
+    app.include_router(projects_router, prefix=API_PREFIX)
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health() -> HealthResponse:

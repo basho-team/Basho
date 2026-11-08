@@ -21,7 +21,20 @@ pytestmark = pytest.mark.db
 
 Factory = async_sessionmaker[AsyncSession]
 APP_ROLES = ["basho_api", "basho_worker"]
-APPEND_ONLY_TABLES = ["evidence_events", "reporting_periods", "report_versions", "report_reviews"]
+APPEND_ONLY_TABLES = [
+    "evidence_events",
+    "reporting_periods",
+    "report_versions",
+    "report_reviews",
+    "audit_log",
+    "tool_approval_requests",
+    "tool_approval_decisions",
+    "projects",
+    "activities",
+    "pending_items",
+    "pending_answers",
+    "artifact_approvals",
+]
 # Tabelas de infraestrutura sem dado de tenant: sem RLS e sem privilégio para a app.
 INFRA_TABLES = ["alembic_version"]
 PERMISSION_DENIED = "permission denied"

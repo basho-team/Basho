@@ -16,6 +16,7 @@ Interfaces combinadas na hora 0 para que backend, agente e frontend avancem em p
 | Exemplo de artefato | `backend/tests/fixtures/activity_record_draft.json` | #9, #12, #13 |
 | Exemplo de relatório do pesquisador | `backend/tests/fixtures/research_report_draft.json` | #9, #12, #38 |
 | Persistência e API de relatórios (`report_versions`, `report_reviews`) | `backend/src/basho/reports/{schemas,service,api}.py` | #39, #42, frontend |
+| Projetos, pendências, aprovação formal e dossiê (`projects`, `pending_items`, `artifact_approvals`) | `backend/src/basho/projects/{service,api}.py`, migração `0005` | #5, #12, #13, frontend |
 
 ## 1. Evidence Ledger (ADR-0003)
 - `NewEvidenceEvent` → entrada de `EvidenceService.append`; o serviço calcula `id`, `content_hash` e `created_at`. O `content_hash` é o SHA-256 (hex minúsculo) do JSON canônico (chaves ordenadas, separadores `,`/`:`, UTF-8, sem NaN) do **envelope de conteúdo imutável** — `tenant_id`, `project_id`, `kind`, `source`, `source_ref`, `actor`, `payload`, `supersedes`, `is_synthetic` — e não apenas do payload, para que a adulteração de qualquer desses campos seja detectável. `id` e `created_at` ficam fora do hash. O envelope é montado campo a campo e versionado (`HASH_VERSION`, coluna `hash_version`).
@@ -94,14 +95,25 @@ Implementado em `basho.agent.checks` e `basho.agent.checker` (#9). Vale para `Ac
 
 | Método | Rota | Corpo / resposta | Nível |
 | --- | --- | --- | --- |
-| GET | `/projects/{id}/pending` | `PendingItemOut[]` | leitura |
-| POST | `/pending/{id}/confirm` | `ConfirmationIn` | humano |
-| POST | `/events/{id}/correct` | `CorrectionIn` | humano |
-| POST | `/artifacts/{id}/approval` | `ApprovalIn` | **formal, só humano** |
-| GET | `/projects/{id}/dossier` | `DossierEntryOut[]` (inclui `AgentRunMetrics`) | leitura |
+| GET | `/projects/{id}` | `ProjectOut` (com `activities[]` e `open_pending`) | leitura, humano identificado |
+| GET | `/projects/{id}/pending?status=open&limit=50&offset=0` | `PendingPageOut` (`items: PendingItemOut[]`, `next_offset`) | leitura, humano identificado |
+| POST | `/pending/{id}/answer` | `PendingAnswerIn` → `PendingAnswerOut` (201); papel diferente do `assignee_role` → **403**; pendência fechada ou de aprovação → **409** `ConflictOut` | humano (papel designado) |
+| POST | `/artifacts/{id}/approval` | `ApprovalIn` → `ApprovalOut` (201); artefato fora de `verified` (ou já decidido / com pendência aberta) → **409** `ConflictOut` | **formal, só humano (`manager`)** |
+| GET | `/projects/{id}/dossier` | `DossierOut` (`project` + `entries: DossierEntryOut[]`, com `runs: AgentRunMetrics[]` quando houver) | leitura, humano identificado |
 | POST | `/projects/{id}/agent-runs` | dispara job do agente → `{run_id}` | humano |
-| GET | `/reports/{version_id}` | `ReportVersionOut` (versão + status por papel da versão atual) | leitura |
+| GET | `/reports/{version_id}` | `ReportVersionOut` (versão + status por papel da versão atual) | leitura, humano identificado |
 | POST | `/reports/{version_id}/review` | `ReviewIn` → `ReviewOut` (201); versão que não é a atual → **409** `VersionConflictOut` | **formal, só humano** |
+
+**Projetos e pendências (#5).** Schemas em `compliance/api_contracts.py`; rotas em `projects/api.py`.
+- *Artefato* = evento `activity_record` do Maker (`payload.artifact_type`); `artifact_id` é o id desse evento.
+- Pendências são uma projeção dos `verification_result` do projeto: `needs_human` → `checker_disagreement`; `verified` → `approval_required`; cada `draft.missing[]` → `missing_justification` (pergunta do Maker, exibida como dado). Idempotente: uma pendência por (veredito, item).
+- `status`: `open` → `answered` (resposta gravada) ou `resolved` (artefato aprovado/rejeitado, ou aprovação que deixou de valer).
+- `POST /pending/{id}/answer`: só o `assignee_role` da pendência responde (outro papel → 403 com mensagem fixa); `ask_role` do Maker vira `researcher` (pesquisador) ou `manager` (demais). Grava `user_correction` com `supersedes` = artefato (o original não muda), chama `CorrectionPropagation.propagate` na mesma transação (dependentes → `needs_review`, #11) e o artefato passa a `draft` (o Maker refaz, ADR-0004). Pendência `approval_required` só se fecha pela aprovação.
+- Estado do artefato (derivado): decisão formal → `approved`/`rejected`; correção humana → `draft`; senão o último veredito (`verified`, `needs_human`, `draft`); sem veredito → `proposed`.
+- `POST /artifacts/{id}/approval`: só `manager`; `approve` exige `verified` sem pendência aberta além da de aprovação; `reject` vale em `verified` ou `needs_human`. Uma decisão por artefato. Grava `user_confirmation` (approve) ou `status_changed` (reject), ambos com `identity_verified: false`.
+- Identidade humana: mesmos headers do #48 (`X-Basho-User-Id`, `X-Basho-Role`, `X-Basho-Identity-Secret`, só no BFF) em **todas** as rotas de projetos, inclusive as leituras (`GET /projects/{id}`, `/pending`, `/dossier`) e `GET /reports/{id}`; sem segredo configurado → 503; header ausente ou inválido → 401; papel errado → 403. Leitura aceita qualquer papel válido.
+- Erros com mensagem fixa (sem detalhe interno): 404 projeto/pendência/artefato, 409 `ConflictOut`, 422 validação.
+- Persistência (migração `0005`): `projects`, `activities`, `pending_items`, `pending_answers`, `artifact_approvals`, append-only (trigger + REVOKE), `tenant_id` + RLS forçada, índices `(tenant_id, project_id, created_at)`. `basho_worker` só **lê** `pending_answers` e `artifact_approvals` (resposta e decisão são humanas). A projeção de pendências é materializada na leitura (`ON CONFLICT DO NOTHING`). Projetos/atividades são criados por `ProjectService.create_project`/`create_activity` (seed #14), sem endpoint no MVP.
 
 O frontend gera tipos a partir de `/openapi.json` e usa mocks desses schemas até #5 ficar pronta.
 
@@ -126,7 +138,7 @@ O mapa completo está na [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestra
 - Cada versão é também um evento `activity_record` no ledger, com `supersedes` apontando para o evento da versão anterior. Cada revisão gera `user_confirmation` (`text_approved`) ou `user_correction` (`changes_requested`, com `supersedes` para o evento da versão revisada).
 - `POST /reports/{id}/review`: o domínio (`review_version`) decide; versão que não é a atual → `VersionConflictError` → 409, sem gravar nada. `correction` (só com `changes_requested`) vira `ReportCorrection` → versão N+1; a versão revisada é preservada e a aprovação dela não vale para a nova.
 - Citações são conferidas no ledger (mesmo tenant e projeto); `formal_hours_event_ids` só aceitam `formal_hours_declared`.
-- Identidade do revisor (placeholder até #47): headers `X-Basho-User-Id`/`X-Basho-Role` só valem com `X-Basho-Identity-Secret` igual a `REVIEWER_IDENTITY_SECRET` (segredo do BFF, tempo constante); sem segredo configurado → 503. Eventos de revisão gravam `identity_verified: false`.
+- Identidade do revisor (placeholder até #47): headers `X-Basho-User-Id`/`X-Basho-Role` só valem com `X-Basho-Identity-Secret` igual a `REVIEWER_IDENTITY_SECRET` (segredo do BFF, tempo constante); sem segredo configurado → 503. Vale também para `GET /reports/{id}` (leitura). Eventos de revisão gravam `identity_verified: false`.
 - Privilégios: `basho_worker` cria versões, mas só **lê** `report_reviews` (revisão é ação formal); `basho_api` lê e insere nas três tabelas.
 
 Ainda previsto (dados): persistência de `agent_runs`.
