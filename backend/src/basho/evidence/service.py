@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from basho.evidence.contracts import EventKind, EvidenceEvent, NewEvidenceEvent
+from basho.evidence.contracts import EventKind, EventSource, EvidenceEvent, NewEvidenceEvent
 from basho.evidence.domain.hashing import HASH_VERSION, compute_content_hash
 from basho.evidence.domain.rules import (
     EvidenceNotFoundError,
@@ -104,6 +104,18 @@ class EvidenceService:
             return set()
         found = await self._repository.existing_ids(tenant_id, project_id, sorted(wanted, key=str))
         return wanted - found
+
+    async def existing_source_refs(
+        self, tenant_id: UUID, project_id: UUID, source: EventSource, refs: Iterable[str]
+    ) -> set[str]:
+        """Quais `source_ref` já existem para a origem: base da ingestão idempotente."""
+        await self._require_session_tenant(tenant_id)
+        wanted = sorted(set(refs))
+        if not wanted:
+            return set()
+        return await self._repository.existing_source_refs(
+            tenant_id, project_id, source.value, wanted
+        )
 
     async def query(
         self,
