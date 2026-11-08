@@ -14,6 +14,23 @@ from sqlalchemy.ext.asyncio import (
 
 TENANT_SETTING = "app.tenant_id"
 
+# Verdadeiro se o role conectado anula a RLS: superuser, BYPASSRLS ou membro do dono de
+# alguma tabela de ``public`` (o dono pode desligar trigger/RLS).
+_UNSAFE_ROLE_SQL = text(
+    """
+    SELECT r.rolsuper OR r.rolbypassrls OR EXISTS (
+        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+          AND pg_has_role(current_user, c.relowner, 'MEMBER')
+    )
+    FROM pg_roles r WHERE r.rolname = current_user
+    """
+)
+
+
+class UnsafeDatabaseRoleError(RuntimeError):
+    """A aplicação está conectada com um role que ignora a RLS (ADR-0006)."""
+
 
 def create_engine(database_url: str) -> AsyncEngine:
     """Cria o engine assíncrono. A URL usa o driver ``postgresql+psycopg://``."""
@@ -39,3 +56,18 @@ async def tenant_session(
             {"name": TENANT_SETTING, "tenant": str(tenant_id)},
         )
         yield session
+
+
+async def assert_least_privilege(engine: AsyncEngine) -> None:
+    """Falha rápido se ``DATABASE_URL`` usar superuser, BYPASSRLS ou o dono do schema.
+
+    Para chamar no startup da API e do worker. A mensagem não inclui o nome do role nem a URL.
+    """
+    async with engine.connect() as connection:
+        unsafe = (await connection.execute(_UNSAFE_ROLE_SQL)).scalar_one()
+    if unsafe:
+        message = (
+            "DATABASE_URL usa um role que ignora a RLS (superuser, BYPASSRLS ou dono das "
+            "tabelas); use o login da aplicação, membro de basho_api/basho_worker"
+        )
+        raise UnsafeDatabaseRoleError(message)

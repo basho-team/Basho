@@ -62,9 +62,12 @@ def test_downgrade_is_refused_when_ledger_has_rows(migration_db_url: URL) -> Non
     run_alembic(migration_db_url, "upgrade", "head")
     dsn = migration_db_url.set(drivername="postgresql").render_as_string(hide_password=False)
     with psycopg.connect(dsn) as connection:
+        # FORCE RLS: o tenant precisa estar definido mesmo para o dono não-superuser.
+        connection.execute("SELECT set_config('app.tenant_id', gen_random_uuid()::text, true)")
         connection.execute(
             "INSERT INTO evidence_events (id, tenant_id, project_id, kind, source, actor, "
-            "payload, content_hash, hash_version) VALUES (gen_random_uuid(), gen_random_uuid(), "
+            "payload, content_hash, hash_version) VALUES (gen_random_uuid(), "
+            "current_setting('app.tenant_id')::uuid, "
             "gen_random_uuid(), 'commit_observed', 'github', '{}'::jsonb, '{}'::jsonb, "
             "repeat('0', 64), 1)"
         )

@@ -31,6 +31,10 @@ A migração `0002` cria dois roles **NOLOGIN** (sem senha), detentores de privi
 `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid`: sem
 `basho.db.tenant_session` nenhuma linha é visível e nenhum INSERT é aceito.
 
+O role de `MIGRATION_DATABASE_URL` é o dono do schema e precisa de `CREATEROLE` (ou ser
+superuser) na primeira vez que a `0002` roda no cluster. O downgrade revoga os privilégios,
+mas mantém os roles (objetos do cluster, possivelmente usados por outros bancos).
+
 O login de cada ambiente é criado fora das migrações (senhas não passam pelo Alembic).
 Depois de `alembic upgrade head`, como o role dono:
 

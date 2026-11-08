@@ -55,6 +55,24 @@ def recreate_database(base: URL, name: str) -> URL:
     return base.set(database=name)
 
 
+def drop_database(base: URL, name: str) -> None:
+    """Remove um banco de teste ao fim da sessão (mesma trava de prefixo)."""
+    if not name.startswith(TEST_DB_PREFIX):
+        raise ValueError("recusado: só bancos de teste podem ser removidos")
+    with psycopg.connect(psycopg_dsn(base, MAINTENANCE_DB_NAME), autocommit=True) as admin:
+        admin.execute(
+            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
+        )
+
+
+def drop_login_role(owner: URL, login: str) -> None:
+    """Remove um login de teste criado por ``provision_login_role``."""
+    if not login.startswith(TEST_DB_PREFIX):
+        raise ValueError("recusado: só roles de teste podem ser removidos")
+    with psycopg.connect(psycopg_dsn(owner, MAINTENANCE_DB_NAME), autocommit=True) as admin:
+        admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(login)))
+
+
 def provision_login_role(owner: URL, login: str, group: str) -> URL:
     """(Re)cria um usuário de login de teste, membro de ``group``, com senha aleatória.
 

@@ -11,9 +11,9 @@ from uuid import UUID
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, ProgrammingError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from basho.db import tenant_session
+from basho.db import UnsafeDatabaseRoleError, assert_least_privilege, tenant_session
 from basho.evidence import EvidenceService
 from evidence_factories import fresh_ids, make_event
 
@@ -94,6 +94,7 @@ async def test_app_role_cannot_update_delete_or_truncate_ledger(
     ],
 )
 async def test_app_role_cannot_weaken_ledger_defenses(app_factory: Factory, statement: str) -> None:
+    # Act / Assert: só o dono altera trigger, RLS, policy ou a tabela
     with pytest.raises(ProgrammingError, match="must be owner"):
         async with app_factory() as session, session.begin():
             await session.execute(text(statement))
@@ -149,7 +150,10 @@ async def test_session_without_tenant_sees_nothing(app_factory: Factory) -> None
 
 
 async def test_session_without_tenant_cannot_insert(app_factory: Factory) -> None:
+    # Arrange
     tenant_id, _ = fresh_ids()
+
+    # Act / Assert
     with pytest.raises(ProgrammingError, match=RLS_VIOLATION):
         async with app_factory() as session, session.begin():
             await session.execute(text(RAW_INSERT), {"tenant": tenant_id})
@@ -158,28 +162,35 @@ async def test_session_without_tenant_cannot_insert(app_factory: Factory) -> Non
 async def test_tenant_does_not_leak_to_next_transaction_on_same_connection(
     app_factory: Factory,
 ) -> None:
-    # Arrange: após o commit o setting volta como '' na mesma conexão
+    # Arrange: uma única conexão física (como uma conexão reaproveitada do pool)
     tenant_id, project_id = fresh_ids()
-    async with app_factory() as session:
-        async with session.begin():
+    engine = app_factory.kw["bind"]
+    async with engine.connect() as connection:
+        async with AsyncSession(bind=connection) as session, session.begin():
             await session.execute(
                 text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)}
             )
             await EvidenceService(session).append(
                 make_event(tenant_id=tenant_id, project_id=project_id)
             )
+        pid_first = (await connection.execute(text("SELECT pg_backend_pid()"))).scalar_one()
 
-        # Act
-        async with session.begin():
-            leftover = await _scalar(session, "SELECT current_setting('app.tenant_id', true)")
-            count_after = await _scalar(session, COUNT_ALL)
+        # Act: próxima transação na MESMA conexão, sem tenant_session
+        leftover = (
+            await connection.execute(text("SELECT current_setting('app.tenant_id', true)"))
+        ).scalar_one()
+        count_after = (await connection.execute(text(COUNT_ALL))).scalar_one()
+        pid_second = (await connection.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+        await connection.rollback()
 
     # Assert
+    assert pid_first == pid_second
     assert leftover in ("", None)
     assert count_after == 0
 
 
 async def test_invalid_tenant_setting_fails_closed(app_factory: Factory) -> None:
+    # Act / Assert: valor inválido gera erro no cast, nunca amplia a visibilidade
     with pytest.raises(DBAPIError, match="uuid"):
         async with app_factory() as session, session.begin():
             await session.execute(text("SELECT set_config('app.tenant_id', 'nope', true)"))
@@ -276,3 +287,14 @@ async def test_app_login_is_not_superuser_nor_member_of_table_owner(
 
     # Assert
     assert privileged is False
+
+
+async def test_least_privilege_check_accepts_app_login(app_factory: Factory) -> None:
+    # Act / Assert: não levanta
+    await assert_least_privilege(app_factory.kw["bind"])
+
+
+async def test_least_privilege_check_rejects_owner_connection(owner_engine: AsyncEngine) -> None:
+    # Act / Assert
+    with pytest.raises(UnsafeDatabaseRoleError):
+        await assert_least_privilege(owner_engine)
