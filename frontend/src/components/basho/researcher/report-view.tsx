@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { EvidencePicker } from "@/components/basho/researcher/evidence-picker";
 import { EvidenceLabel, useEvidence } from "@/components/basho/researcher/evidence-panel";
-import { Badge, Card, ErrorBox, Loading, Mono, buttonClass, inputClass, secondaryButtonClass } from "@/components/basho/ui";
+import { Badge, Card, ErrorBox, Loading, Mono, buttonClass, inputClass } from "@/components/basho/ui";
 import { ApiError, api } from "@/lib/api";
 import { CLAIM_STATUS, OUTCOME, REVIEW_STATE, SECTION, short } from "@/lib/labels";
 import type { ChecksOut, ClaimStatus, DemoContext, EvidenceEvent, Outcome, ReportVersionOut, VersionConflict } from "@/lib/types";
@@ -85,13 +85,16 @@ function VersionBody({ out, evidence }: { out: ReportVersionOut; evidence: Evide
 }
 
 function Checks({ versionId }: { versionId: string }) {
-  const run = useMutation({ mutationFn: () => api.post<ChecksOut>(`reports/${versionId}/checks`, {}) });
+  // Verificações rodam sozinhas ao abrir a versão (checks determinísticos são puros).
+  const run = useQuery({
+    queryKey: ["checks", versionId],
+    queryFn: () => api.post<ChecksOut>(`reports/${versionId}/checks`, {}),
+  });
   return (
-    <div className="space-y-2">
-      <button type="button" className={secondaryButtonClass} onClick={() => run.mutate()} disabled={run.isPending}>
-        {run.isPending ? "Verificando…" : "Rodar verificações"}
-      </button>
-      {run.isError && <ErrorBox error={run.error} />}
+    <div className="space-y-2 rounded border border-zinc-200 p-3">
+      <h3 className="text-sm font-medium">Verificações automáticas</h3>
+      {run.isPending && <Loading label="Verificando…" />}
+      {run.isError && <ErrorBox error={run.error} onRetry={() => void run.refetch()} />}
       {run.data && (
         <div className="space-y-1 text-sm">
           <p>Checks determinísticos: <Badge tone={run.data.deterministic.verdict === "pass" ? "ok" : "bad"}>{run.data.deterministic.verdict === "pass" ? "aprovado" : "reprovado"}</Badge></p>
@@ -196,6 +199,7 @@ export function ReportView({ ctx, current, canAct }: { ctx: DemoContext; current
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState(current.version.id);
   const [conflict, setConflict] = useState<VersionConflict | null>(null);
+  const [editing, setEditing] = useState(false);
   const history = useQuery({
     queryKey: ["history", current.version.id],
     queryFn: () => api.get<ReportVersionOut[]>(`reports/${current.version.id}/history`),
@@ -234,6 +238,11 @@ export function ReportView({ ctx, current, canAct }: { ctx: DemoContext; current
           </button>
         ))}
       </div>
+      <p className="mb-3 text-xs text-zinc-500">
+        {shown.version.change
+          ? `v${shown.version.number}: corrigida por ${shown.version.change.author_role} — ${shown.version.change.reason}`
+          : `v${shown.version.number}: rascunho preparado automaticamente pelo sistema a partir do ledger (regras; IA indisponível nesta demo). Leia e confirme, ou edite se algo estiver errado.`}
+      </p>
       {isOld && <p className="mb-3 rounded border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">Você está vendo uma versão anterior (preservada). Confirmações valem só para a versão exata.</p>}
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <VersionBody out={shown} evidence={evidence.data ?? []} />
@@ -241,7 +250,7 @@ export function ReportView({ ctx, current, canAct }: { ctx: DemoContext; current
           <Checks versionId={shown.version.id} />
           {canAct && (
             <div className="space-y-2 rounded border border-zinc-200 p-3">
-              <h3 className="text-sm font-medium">Confirmar texto da v{shown.version.number}</h3>
+              <h3 className="text-sm font-medium">Está correto?</h3>
               <p className="text-xs text-zinc-500">Confirma redação e fatos desta versão exata. Não é aprovação fiscal.</p>
               <button type="button" className={buttonClass} onClick={() => confirm.mutate()} disabled={confirm.isPending}>
                 {confirm.isPending ? "Confirmando…" : `Confirmar v${shown.version.number}`}
@@ -256,7 +265,14 @@ export function ReportView({ ctx, current, canAct }: { ctx: DemoContext; current
               {confirm.isSuccess && <p className="text-xs text-emerald-700">Texto da v{shown.version.number} confirmado.</p>}
             </div>
           )}
-          {canAct && !isOld && <CorrectionForm key={shown.version.id} out={shown} ctx={ctx} onDone={(id) => { setSelected(id); refresh(); }} />}
+          {canAct && !isOld && (
+            <div>
+              <button type="button" className="text-xs text-zinc-500 underline-offset-2 hover:underline" onClick={() => setEditing(!editing)}>
+                {editing ? "cancelar edição" : "Algo errado? Editar"}
+              </button>
+              {editing && <div className="mt-2"><CorrectionForm key={shown.version.id} out={shown} ctx={ctx} onDone={(id) => { setSelected(id); setEditing(false); refresh(); }} /></div>}
+            </div>
+          )}
         </div>
       </div>
     </Card>

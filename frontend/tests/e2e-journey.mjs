@@ -97,72 +97,59 @@ async function main() {
   const click = async (label) => assert.ok(await evalJs(`(() => { const b = __b.button(${JSON.stringify(label)}); if (b) b.click(); return !!b; })()`), `botão ${label}`);
   await send("Page.enable"); await send("Network.enable"); await send("Runtime.enable");
 
-  // 1) Ana monta o relatório (com horas no texto, de propósito)
+  // 1) Ana abre a tela: o rascunho já foi preparado pelo sistema (leitura primeiro)
   await as(ANA, "researcher", "/pesquisador");
-  await waitText("Construir relatório do período");
-  await evalJs(`__b.set(__b.inLabel("Título", "input"), "Avaliação do int8 no hardware embarcado")`);
-  await evalJs(`__b.set(__b.inLabel("Descrição", "textarea"), "Avaliação do modelo quantizado na placa embarcada de teste (sintético).")`);
-  await click("Registrar evidência");
-  await waitText("Avaliação do int8 no hardware embarcado");
-  await evalJs(`__b.set(__b.inLabel("Resumo do período", "textarea"), "Quantização int8 avaliada no hardware embarcado; precisão caiu.")`);
-  await evalJs(`__b.set(__b.byPlaceholder("Texto da afirmação", 0), "Ana dedicou 40 horas à avaliação do int8 na placa.")`);
-  assert.ok(await evalJs(`__b.pick(0, "Avaliação do int8")`), "evidência da afirmação 1");
-  await click("+ afirmação");
-  await evalJs(`__b.selectNth("technological_challenge", 1, "result")`);
-  await evalJs(`__b.set(__b.byPlaceholder("Texto da afirmação", 1), "Precisão caiu 4,1 p.p. após a quantização int8.")`);
-  assert.ok(await evalJs(`__b.pick(1, "c94ab")`), "evidência da afirmação 2");
-  await click("+ experimento");
+  await waitText("rascunho preparado automaticamente pelo sistema");
+  await waitText("Checks determinísticos");
+  assert.ok(!(await text()).includes("Construir relatório do período"), "não deve pedir que o usuário monte o relatório");
+  assert.ok(!(await text()).includes("Registrar evidência"), "registro manual fica escondido");
+  await shot("01-ana-rascunho-automatico");
+
+  // 2) Ana nota que falta o resultado negativo: modo edição discreto → v2
+  await click("Algo errado? Editar");
+  await evalJs(`__b.selectNth("add_experiment", 0, "add_experiment")`);
   await evalJs(`__b.set(__b.byPlaceholder("Descrição do experimento", 0), "Quantização int8 dinâmica no modelo embarcado.")`);
   await evalJs(`__b.selectNth("negative", 0, "negative")`);
-  assert.ok(await evalJs(`__b.pick(2, "c94ab")`), "evidência do experimento");
-  await shot("01-ana-construindo");
-  await click("Criar relatório");
-  await waitText("versão atual v1");
-  await shot("02-ana-v1");
-
-  // 2) verificações reprovam (horas no texto)
-  await click("Rodar verificações");
-  await waitText("formal_data_in_text");
-  await shot("03-checks-reprovados");
-
-  // 3) correção gera v2 preservando a v1
-  await evalJs(`__b.set(__b.byPlaceholder("Novo texto", 0), "Avaliação do int8 executada na placa embarcada de teste.")`);
-  await evalJs(`__b.set(__b.byPlaceholder("Motivo da correção (obrigatório)", 0), "Horas não podem constar no texto do relatório.")`);
+  assert.ok(await evalJs(`__b.pick(0, "c94ab")`), "evidência do experimento");
+  await evalJs(`__b.set(__b.byPlaceholder("Motivo da correção (obrigatório)", 0), "Faltava registrar a queda de precisão como resultado negativo.")`);
+  await shot("02-ana-editando");
   await click("Gerar nova versão");
   await waitText("versão atual v2");
-  await shot("04-ana-v2");
+  await waitText("Negativo");
+  await shot("03-ana-v2");
 
-  // 4) confirmar a v1 antiga → 409; abrir a atual e confirmar a v2
+  // 3) confirmar a v1 antiga → 409; abrir a atual e confirmar a v2
   await click("v1");
   await waitText("Você está vendo uma versão anterior");
   await click("Confirmar v1");
   await waitText("Conflito de versão (409)");
-  await shot("05-conflito-409");
+  await shot("04-conflito-409");
   await click("Abrir a versão atual");
   await waitText("Confirmar v2");
   await click("Confirmar v2");
   await waitText("Texto da v2 confirmado");
-  await click("Rodar verificações");
-  await waitText("aprovado");
-  await shot("06-ana-v2-confirmada");
 
-  // 4b) coordenação registra as horas formais da Ana; Ana resolve a lacuna citando-as (v3)
+  // 4) coordenação registra as horas formais da Ana; Ana resolve a lacuna citando-as (v3)
   await as(CARLA, "manager", "/gerente");
+  await click("registrar horas formais de um pesquisador");
   await waitText("Registrar horas formais");
   await evalJs(`__b.set(__b.byPlaceholder("horas", 0), "96")`);
   await evalJs(`__b.set(__b.byPlaceholder("Base do registro (ex.: folha de ponto conferida)", 0), "Folha de ponto de outubro conferida pela coordenação (sintético).")`);
   await click("Registrar");
   await waitText("Registro gravado no ledger");
   await as(ANA, "researcher", "/pesquisador");
-  await waitText("Horas formais — Ana");
+  await waitText("Confirmar v2");
+  await click("Algo errado? Editar");
   await evalJs(`__b.selectNth("resolve_missing", 0, "resolve_missing")`);
+  await evalJs(`(() => { const s = [...document.querySelectorAll("select")].find((x) => [...x.options].some((o) => o.text.startsWith("formal_hours"))); const o = [...s.options].find((o) => o.text.startsWith("formal_hours")); __b.set(s, o.value); })()`);
+  await sleep(300);
   assert.ok(await evalJs(`__b.pick(0, "Horas formais — Ana")`), "registro formal de horas");
   await evalJs(`__b.set(__b.byPlaceholder("Motivo da correção (obrigatório)", 0), "Lacuna de horas resolvida pelo registro formal da coordenação.")`);
   await click("Gerar nova versão");
   await waitText("versão atual v3");
   await click("Confirmar v3");
   await waitText("Texto da v3 confirmado");
-  await shot("06b-ana-v3-horas");
+  await shot("06-ana-v3-confirmada");
 
   // 5) Bia confirma o próprio relatório (seed)
   await as(BIA, "researcher", "/pesquisador");

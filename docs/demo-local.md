@@ -26,19 +26,19 @@ Cada execução cria um banco novo; nenhum banco é apagado. Segredos locais ger
 | Projeto, período e pessoas (Ana, Bia, Carla, Davi) | **sintéticos**, constantes em `backend/src/basho/demo/context.py` |
 | Eventos de GitHub e horas de RH de Bia; relatório v1 de Bia | **sintéticos** (seed `python -m basho.demo.seed`, ator `system:demo-seed`) |
 | Identidade | **demonstração**: a persona escolhida no topo vai num cookie; o BFF a afirma à API com `REVIEWER_IDENTITY_SECRET`. Não é autenticação (#47). |
+| Rascunho do relatório | **automático por regras** (`POST .../reports/auto-draft`, ator `system:auto-draft:regras-v1`): só reproduz e cita as fontes do pesquisador; o que falta vira pergunta. Ponto de troca para o Maker. |
 | Maker (Claude) e Checker (outro provedor) | **implementados e testados com LLM simulado (#49, #45)**, mas **não acionados pela interface**: sem chave de API e sem custo. A tela mostra "indisponível". |
 
-## Roteiro (≈5 min)
+## Roteiro (≈5 min) — o sistema prepara, a pessoa lê e só edita se algo estiver errado
 
-1. **Abertura** (página inicial): banner de dados sintéticos; "o Basho não decide enquadramento nem garante benefício".
-2. **Ana — Pesquisador**: registra a atividade "Avaliação do int8"; monta o relatório com duas afirmações (uma com "40 horas" no texto), um experimento **negativo** e sem horas formais (abre a lacuna `formal_hours`). Cria a **v1**.
-3. **Verificações**: "Rodar verificações" → reprovado com `formal_data_in_text`. "Checker por IA indisponível" aparece explícito.
-4. **Correção**: revisa a afirmação sem horas → **v2** (a v1 continua visível em "Versões").
-5. **Conflito**: abre a v1 e tenta "Confirmar v1" → **409**, nada gravado; "Abrir a versão atual" → "Confirmar v2".
-6. **Carla — Gerente**: registra as horas formais da Ana (coordenação). **Ana** resolve a lacuna citando o registro → **v3** → confirma a v3.
-7. **Bia**: confirma o próprio relatório (que tem conflito entre bancadas e resultado inconclusivo).
-8. **Carla**: consolidação com Negativos 1 / Inconclusivos 1, origem de cada item (pessoa, versão, item, texto confirmado), "Ver texto exportável"; "Aceitar v3".
-9. **Davi — Fiscal**: dossiê com situação de cada item (sustentada, pendente, conflitante, negativo, inconclusivo, lacuna), hash e localizador `report:<versão>/<tipo>/<item>`, revisão do pesquisador pelo ID e horas por referência formal. Fecha com: "material para análise humana; não é aprovação fiscal".
+1. **Abertura**: banner de dados sintéticos; "o Basho não decide enquadramento nem garante benefício".
+2. **Ana — Pesquisador**: a tela abre com o **rascunho já preparado** a partir do ledger (cada afirmação cita a fonte; hipótese, desfechos e horas viram perguntas) e com as **verificações já rodadas**. Rótulo honesto: "regras; IA indisponível nesta demo".
+3. **Edição sutil**: Ana nota que falta o resultado negativo → "Algo errado? Editar" → acrescenta o experimento **negativo** citando o commit c94ab → **v2** (a v1 continua em "Versões").
+4. **Conflito**: abre a v1 e tenta "Confirmar v1" → **409**, nada gravado; "Abrir a versão atual" → "Confirmar v2".
+5. **Carla — Gerente**: "registrar horas formais de um pesquisador" (link discreto) para a Ana. **Ana** edita: resolve a lacuna `formal_hours` citando o registro → **v3** → confirma.
+6. **Bia**: lê e confirma o próprio relatório (conflito entre bancadas, resultado inconclusivo).
+7. **Carla**: consolidação (Negativos 1 / Inconclusivos 1), origem de cada item, texto exportável; "Aceitar v3".
+8. **Davi — Fiscal**: dossiê só leitura — situação de cada item, hash e localizador `report:<versão>/<tipo>/<item>`, revisão do pesquisador pelo ID, horas por referência formal. "Material para análise humana; não é aprovação fiscal."
 
 **Frases proibidas:** "é elegível", "garante o benefício", "aprovado fiscalmente", "envia o FORMP&D".
 

@@ -69,6 +69,18 @@ function FormalHoursForm({ ctx }: { ctx: DemoContext }) {
   );
 }
 
+function HoursToggle({ ctx }: { ctx: DemoContext }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button type="button" className="text-xs text-zinc-500 underline-offset-2 hover:underline" onClick={() => setOpen(!open)}>
+        {open ? "fechar" : "registrar horas formais de um pesquisador"}
+      </button>
+      {open && <div className="mt-2"><FormalHoursForm ctx={ctx} /></div>}
+    </div>
+  );
+}
+
 function ManagerWork({ ctx }: { ctx: DemoContext }) {
   const reports = useReports(ctx);
   const cons = useQuery({
@@ -98,7 +110,7 @@ function ManagerWork({ ctx }: { ctx: DemoContext }) {
           ))}
         </ul>
       </Card>
-      <FormalHoursForm ctx={ctx} />
+      <HoursToggle ctx={ctx} />
       <Card title="Consolidação gerencial" actions={c && <button type="button" className={secondaryButtonClass} onClick={() => setShowMd(!showMd)}>{showMd ? "Ver estruturado" : "Ver texto exportável"}</button>}>
         {cons.isPending && <Loading />}
         {cons.isError && <ErrorBox error={cons.error} onRetry={() => void cons.refetch()} />}

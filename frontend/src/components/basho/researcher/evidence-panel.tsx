@@ -51,6 +51,7 @@ export function EvidencePanel({ ctx, userId }: { ctx: DemoContext; userId: strin
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [hours, setHours] = useState("");
+  const [editing, setEditing] = useState(false);
   const register = useMutation({
     mutationFn: () => api.post<EvidenceEvent>(`projects/${ctx.project_id}/evidence`, {
       kind, title, description,
@@ -64,8 +65,15 @@ export function EvidencePanel({ ctx, userId }: { ctx: DemoContext; userId: strin
   const mine = (evidence.data ?? []).filter((e) => belongsTo(e, userId));
   const others = (evidence.data ?? []).filter((e) => !belongsTo(e, userId));
   return (
-    <Card title="Evidências do projeto (ledger append-only)">
-      <form
+    <Card
+      title="Evidências do projeto (ledger append-only)"
+      actions={
+        <button type="button" className="text-xs text-zinc-500 underline-offset-2 hover:underline" onClick={() => setEditing(!editing)}>
+          {editing ? "fechar" : "faltou alguma? registrar manualmente"}
+        </button>
+      }
+    >
+      {editing && <form
         className="mb-4 grid gap-2 rounded border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2"
         onSubmit={(e) => { e.preventDefault(); register.mutate(); }}
       >
@@ -94,7 +102,7 @@ export function EvidencePanel({ ctx, userId }: { ctx: DemoContext; userId: strin
           </button>
         </div>
         {register.isError && <div className="sm:col-span-2"><ErrorBox error={register.error} /></div>}
-      </form>
+      </form>}
       {evidence.isPending && <Loading />}
       {evidence.isError && <ErrorBox error={evidence.error} onRetry={() => void evidence.refetch()} />}
       {evidence.data && (
