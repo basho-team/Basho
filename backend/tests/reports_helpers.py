@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from basho.agent.artifacts import ResearchReportDraft
-from basho.reports.versions import ReportVersion
+from basho.reports.versions import ReportVersion, create_first_version
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TENANT = UUID("99999999-9999-4999-8999-999999999999")
@@ -24,10 +24,9 @@ def load_draft(name: str) -> ResearchReportDraft:
 
 
 def first_version(name: str = "research_report_draft.json") -> ReportVersion:
-    return ReportVersion(
-        id=uuid4(),
+    return create_first_version(
+        version_id=uuid4(),
         tenant_id=TENANT,
-        number=1,
         draft=load_draft(name),
         created_at=T0,
         is_synthetic=True,

@@ -22,6 +22,7 @@ from basho.reports.versions import (
     InvalidHistoryError,
     ReportVersion,
     ReviewDecision,
+    ReviewerRole,
     VersionConflictError,
     review_version,
     validate_history,
@@ -49,7 +50,7 @@ def _correction(base: ReportVersion, *ops: object) -> ReportCorrection:
 
 def _answer_hypothesis(base: ReportVersion) -> ReportVersion:
     op = ReviseClaim(
-        claim_index=PENDING_CLAIM,
+        claim_id=base.claim_ids[PENDING_CLAIM],
         text="Hipótese: rebalancear com SMOTE recupera a precisão perdida na classe rara.",
         status=ClaimStatus.SUPPORTED,
         evidence_ids=(PR43, NEW_EVIDENCE),
@@ -68,7 +69,7 @@ def test_correction_creates_new_version_and_keeps_previous_intact() -> None:
     assert v2.draft.claims[PENDING_CLAIM].status is ClaimStatus.SUPPORTED
     assert v1.draft.claims[PENDING_CLAIM].status is ClaimStatus.PENDING
     assert v2.change is not None
-    assert v2.change.affected_claims == (PENDING_CLAIM,)
+    assert v2.change.affected_claim_ids == (v1.claim_ids[PENDING_CLAIM],)
     assert v2.change.author_role == "pesquisador"
     assert v2.is_synthetic
 
@@ -77,7 +78,9 @@ def test_correction_on_outdated_version_is_conflict() -> None:
     # Arrange
     v1 = first_version()
     v2 = _answer_hypothesis(v1)
-    stale = _correction(v1, WithdrawClaim(claim_index=0, reason="Afirmação duplicada no texto."))
+    stale = _correction(
+        v1, WithdrawClaim(claim_id=v1.claim_ids[0], reason="Afirmação duplicada no texto.")
+    )
     # Act / Assert
     with pytest.raises(VersionConflictError) as exc:
         apply_correction([v1, v2], stale, new_version_id=uuid4(), created_at=at(9))
@@ -95,7 +98,7 @@ def test_review_of_old_version_is_conflict_and_does_not_approve_current() -> Non
             review_id=uuid4(),
             version_id=v1.id,
             reviewer_id=RESEARCHER_ANA,
-            reviewer_role="pesquisador",
+            reviewer_role=ReviewerRole.RESEARCHER,
             decision=ReviewDecision.TEXT_APPROVED,
             reviewed_at=at(10),
         )
@@ -105,7 +108,7 @@ def test_answer_without_evidence_cannot_become_supported() -> None:
     # Arrange
     v1 = first_version()
     op = ReviseClaim(
-        claim_index=PENDING_CLAIM,
+        claim_id=v1.claim_ids[PENDING_CLAIM],
         text="Hipótese informada verbalmente, ainda sem registro escrito.",
         status=ClaimStatus.SUPPORTED,
     )
@@ -118,7 +121,7 @@ def test_negative_outcome_change_requires_evidence_and_keeps_experiment() -> Non
     # Arrange
     v1 = first_version()
     op = ReviseExperimentOutcome(
-        experiment_index=NEGATIVE_EXPERIMENT,
+        experiment_id=v1.experiment_ids[NEGATIVE_EXPERIMENT],
         outcome=ExperimentOutcomeKind.INCONCLUSIVE,
         evidence_ids=(NEW_EVIDENCE,),
         reason="Nova rodada indica que a queda depende da calibração.",
@@ -132,9 +135,10 @@ def test_negative_outcome_change_requires_evidence_and_keeps_experiment() -> Non
     assert NEW_EVIDENCE in revised.evidence_ids
     assert v2.change is not None
     assert "negative → inconclusive" in v2.change.operations[0]
+    assert v2.change.affected_experiment_ids == (v1.experiment_ids[NEGATIVE_EXPERIMENT],)
     with pytest.raises(ValidationError):
         ReviseExperimentOutcome(
-            experiment_index=0,
+            experiment_id=uuid4(),
             outcome=ExperimentOutcomeKind.POSITIVE,
             evidence_ids=(),
             reason="Sem evidência nova para a mudança.",
@@ -150,7 +154,7 @@ def test_no_operation_removes_experiments() -> None:
                 "author_id": RESEARCHER_ANA,
                 "author_role": "pesquisador",
                 "reason": "Remover experimento que deu errado.",
-                "operations": [{"kind": "remove_experiment", "experiment_index": 1}],
+                "operations": [{"kind": "remove_experiment", "experiment_id": str(uuid4())}],
             }
         )
 
@@ -158,8 +162,8 @@ def test_no_operation_removes_experiments() -> None:
 def test_formal_hours_gap_only_closes_with_formal_event_reference() -> None:
     # Arrange
     v1 = first_version()
-    by_text = ResolveMissing(missing_index=0, evidence_ids=(NEW_EVIDENCE,))
-    by_event = ResolveMissing(missing_index=0, formal_hours_event_ids=(HOURS_EVENT,))
+    by_text = ResolveMissing(missing_id=v1.missing_ids[0], evidence_ids=(NEW_EVIDENCE,))
+    by_event = ResolveMissing(missing_id=v1.missing_ids[0], formal_hours_event_ids=(HOURS_EVENT,))
     # Act / Assert
     with pytest.raises(InvalidCorrectionError):
         apply_correction([v1], _correction(v1, by_text), new_version_id=uuid4(), created_at=at(3))
@@ -168,13 +172,13 @@ def test_formal_hours_gap_only_closes_with_formal_event_reference() -> None:
     assert v2.draft.missing == ()
 
 
-def test_multiple_operations_keep_original_indexes() -> None:
+def test_multiple_operations_reference_items_by_id() -> None:
     # Arrange
     v1 = first_version()
     ops = (
-        WithdrawClaim(claim_index=0, reason="Desafio repetido em outro relatório."),
+        WithdrawClaim(claim_id=v1.claim_ids[0], reason="Desafio repetido em outro relatório."),
         ReviseClaim(
-            claim_index=PENDING_CLAIM,
+            claim_id=v1.claim_ids[PENDING_CLAIM],
             text="Hipótese do SMOTE ainda sem critério de sucesso definido pelo time.",
             status=ClaimStatus.PENDING,
             question="Qual métrica e limiar definem sucesso do rebalanceamento com SMOTE?",
@@ -193,12 +197,15 @@ def test_multiple_operations_keep_original_indexes() -> None:
     assert v2.draft.claims[-1].question is not None
     assert v2.draft.experiments[-1].outcome is ExperimentOutcomeKind.NEGATIVE
     assert v2.change is not None
-    assert v2.change.affected_claims == (0, PENDING_CLAIM)
+    assert v2.change.withdrawn_claim_ids == (v1.claim_ids[0],)
+    assert v2.change.affected_claim_ids == (v1.claim_ids[PENDING_CLAIM],)
+    assert v2.claim_ids[-1] == v1.claim_ids[PENDING_CLAIM]
+    assert len(v2.change.added_experiment_ids) == 1
 
 
-def test_invalid_index_is_rejected() -> None:
+def test_unknown_item_id_is_rejected() -> None:
     v1 = first_version()
-    op = WithdrawClaim(claim_index=42, reason="Índice que não existe na versão.")
+    op = WithdrawClaim(claim_id=uuid4(), reason="ID que não existe na versão-base.")
     with pytest.raises(InvalidCorrectionError):
         apply_correction([v1], _correction(v1, op), new_version_id=uuid4(), created_at=at(1))
 
@@ -220,5 +227,14 @@ def test_version_lineage_invariants() -> None:
     v1 = first_version()
     with pytest.raises(ValidationError):
         ReportVersion(
-            id=uuid4(), tenant_id=v1.tenant_id, number=2, draft=v1.draft, created_at=at(1)
+            id=uuid4(),
+            tenant_id=v1.tenant_id,
+            number=2,
+            draft=v1.draft,
+            claim_ids=v1.claim_ids,
+            experiment_ids=v1.experiment_ids,
+            missing_ids=v1.missing_ids,
+            created_at=at(1),
         )
+    with pytest.raises(ValidationError):
+        v1.model_validate({**v1.model_dump(), "claim_ids": v1.claim_ids[:-1]})

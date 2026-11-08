@@ -15,7 +15,14 @@ from basho.reports.consolidation import (
     consolidate,
 )
 from basho.reports.corrections import ReportCorrection, ReviseClaim, apply_correction
-from basho.reports.versions import ReportReview, ReportVersion, ReviewDecision, review_version
+from basho.reports.versions import (
+    ReportReview,
+    ReportVersion,
+    ReviewDecision,
+    ReviewerNotAllowedError,
+    ReviewerRole,
+    review_version,
+)
 from reports_helpers import MANAGER, RESEARCHER_ANA, at, first_version
 
 SECOND = "reports/second_researcher_draft.json"
@@ -28,7 +35,7 @@ def _approve(history: list[ReportVersion], version: ReportVersion, minute: int) 
         review_id=uuid4(),
         version_id=version.id,
         reviewer_id=version.key.researcher_id,
-        reviewer_role="pesquisador",
+        reviewer_role=ReviewerRole.RESEARCHER,
         decision=ReviewDecision.TEXT_APPROVED,
         reviewed_at=at(minute),
     )
@@ -42,7 +49,7 @@ def _answer(v1: ReportVersion) -> ReportVersion:
         reason="Hipótese registrada no PR #43 após pedido do gerente.",
         operations=(
             ReviseClaim(
-                claim_index=3,
+                claim_id=v1.claim_ids[3],
                 text="Hipótese: SMOTE recupera a precisão na classe rara de vibração.",
                 status=ClaimStatus.SUPPORTED,
                 evidence_ids=(PR43,),
@@ -64,7 +71,9 @@ def test_consolidation_keeps_negative_and_inconclusive_results_with_source() -> 
     assert counts[ExperimentOutcomeKind.INCONCLUSIVE] == 1
     negative = next(r for r in result.results if r.outcome is ExperimentOutcomeKind.NEGATIVE)
     assert negative.source.version_id == ana.id
-    assert negative.source.item == "experiments[1]"
+    assert negative.source.item_id == ana.experiment_ids[1]
+    assert result.tenant_id == ana.tenant_id
+    assert result.period == ana.draft.period
     assert result.is_synthetic
     assert result.note == CONSOLIDATION_NOTE
 
@@ -78,11 +87,20 @@ def test_consolidation_separates_text_approved_from_pending_review() -> None:
         [ReportInput(versions=(ana,)), ReportInput(versions=(bia,), reviews=(review,))]
     )
     # Assert
-    states = {s.researcher_id: s.review_state for s in result.reports}
+    states = {s.researcher_id: s.researcher.state for s in result.reports}
     assert states[ana.key.researcher_id] is ReviewState.AWAITING_REVIEW
     assert states[bia.key.researcher_id] is ReviewState.TEXT_APPROVED
     assert not result.all_text_approved
-    assert all(not r.source.text_approved for r in result.results if r.source.version_id == ana.id)
+    assert all(
+        r.source.researcher_review_id is None
+        for r in result.results
+        if r.source.version_id == ana.id
+    )
+    assert all(
+        r.source.researcher_review_id == review.id
+        for r in result.results
+        if r.source.version_id == bia.id
+    )
 
 
 def test_approval_of_old_version_does_not_carry_to_correction() -> None:
@@ -95,7 +113,7 @@ def test_approval_of_old_version_does_not_carry_to_correction() -> None:
     # Assert
     status = result.reports[0]
     assert status.current_version_number == 2
-    assert status.review_state is ReviewState.AWAITING_REVIEW
+    assert status.researcher.state is ReviewState.AWAITING_REVIEW
     assert status.approved_version_number == 1
     assert status.approval_outdated
     assert all(item.source.version_number == 2 for item in result.advances)
@@ -125,13 +143,13 @@ def test_formal_hours_are_references_never_sums() -> None:
 def test_rejects_mixed_scope_duplicates_and_orphan_reviews() -> None:
     # Arrange
     ana = first_version()
-    other_period = ana.model_copy(
+    other_project = ana.model_copy(
         update={"draft": ana.draft.model_copy(update={"project_id": uuid4()}), "id": uuid4()}
     )
     orphan = _approve([ana], ana, 1).model_copy(update={"version_id": uuid4()})
     # Act / Assert
     with pytest.raises(InconsistentConsolidationError):
-        consolidate([ReportInput(versions=(ana,)), ReportInput(versions=(other_period,))])
+        consolidate([ReportInput(versions=(ana,)), ReportInput(versions=(other_project,))])
     with pytest.raises(InconsistentConsolidationError):
         consolidate([ReportInput(versions=(ana,)), ReportInput(versions=(first_version(),))])
     with pytest.raises(InconsistentConsolidationError):
@@ -140,16 +158,51 @@ def test_rejects_mixed_scope_duplicates_and_orphan_reviews() -> None:
         consolidate([])
 
 
-def test_latest_review_wins_on_current_version() -> None:
+def test_latest_review_of_same_role_wins() -> None:
     v1 = first_version()
     approved = _approve([v1], v1, 1)
     changes = approved.model_copy(
-        update={
-            "id": uuid4(),
-            "decision": ReviewDecision.CHANGES_REQUESTED,
-            "reviewer_id": MANAGER,
-            "reviewed_at": at(2),
-        }
+        update={"id": uuid4(), "decision": ReviewDecision.CHANGES_REQUESTED, "reviewed_at": at(2)}
     )
     result = consolidate([ReportInput(versions=(v1,), reviews=(changes, approved))])
-    assert result.reports[0].review_state is ReviewState.CHANGES_REQUESTED
+    assert result.reports[0].researcher.state is ReviewState.CHANGES_REQUESTED
+    assert result.reports[0].researcher.review_id == changes.id
+    assert result.reports[0].manager.state is ReviewState.AWAITING_REVIEW
+
+
+def test_only_the_author_can_review_as_researcher() -> None:
+    v1 = first_version()
+    with pytest.raises(ReviewerNotAllowedError):
+        review_version(
+            [v1],
+            review_id=uuid4(),
+            version_id=v1.id,
+            reviewer_id=MANAGER,
+            reviewer_role=ReviewerRole.RESEARCHER,
+            decision=ReviewDecision.TEXT_APPROVED,
+            reviewed_at=at(1),
+        )
+
+
+def test_manager_approval_alone_does_not_mark_text_approved() -> None:
+    v1 = first_version()
+    manager_ok = review_version(
+        [v1],
+        review_id=uuid4(),
+        version_id=v1.id,
+        reviewer_id=MANAGER,
+        reviewer_role=ReviewerRole.MANAGER,
+        decision=ReviewDecision.TEXT_APPROVED,
+        reviewed_at=at(1),
+    )
+    result = consolidate([ReportInput(versions=(v1,), reviews=(manager_ok,))])
+    assert not result.all_text_approved
+    assert all(r.source.researcher_review_id is None for r in result.results)
+
+
+def test_consolidation_id_changes_when_inputs_change() -> None:
+    v1 = first_version()
+    before = consolidate([ReportInput(versions=(v1,))])
+    after = consolidate([ReportInput(versions=(v1,), reviews=(_approve([v1], v1, 1),))])
+    assert before.consolidation_id != after.consolidation_id
+    assert after.input_version_ids == (v1.id,)

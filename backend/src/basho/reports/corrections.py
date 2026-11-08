@@ -2,17 +2,19 @@
 
 Regras:
 - a correção declara a versão-base; se não for a atual → `VersionConflictError` (409);
-- a versão anterior nunca é alterada; aprovações anteriores não passam para a nova;
+- operações referenciam itens por **ID estável** (`claim_id`, `experiment_id`, `missing_id`),
+  nunca por posição; a versão anterior nunca é alterada;
 - experimentos (inclusive negativos/inconclusivos) não podem ser removidos; mudar o desfecho
   exige evidência e motivo;
-- afirmação só vira `supported` com evidência citada; resposta sem evidência mantém `pending`
-  (o schema `ReportClaim` garante isso);
+- afirmação só vira `supported` com evidência citada (schema `ReportClaim`);
+- lacuna resolvida fica estruturada em `ChangeRecord.resolved_gaps`;
 - o resultado é revalidado integralmente por `ResearchReportDraft`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -25,44 +27,50 @@ from basho.agent.artifacts import (
     ExperimentOutcomeKind,
     ResearchReportDraft,
 )
-from basho.reports.versions import ChangeRecord, ReportVersion, ensure_current
+from basho.reports.versions import (
+    ChangeRecord,
+    ItemKind,
+    ReportVersion,
+    ResolvedGap,
+    WithdrawnClaim,
+    ensure_current,
+    item_id,
+)
 
 MIN_REASON_LENGTH = 10
+FORMAL_HOURS_FIELD = "formal_hours"
 
 
 class _Op(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class ReviseClaim(_Op):
-    """Substitui a afirmação no índice dado (texto, status e campos do status)."""
+class _ClaimFields(_Op):
+    text: str
+    status: ClaimStatus
+    evidence_ids: tuple[UUID, ...] = ()
+    question: str | None = None
+    ask_role: str | None = None
+    dispute_reason: str | None = None
+
+
+class ReviseClaim(_ClaimFields):
+    """Substitui o conteúdo da afirmação; a seção e o ID são preservados."""
 
     kind: Literal["revise_claim"] = "revise_claim"
-    claim_index: int = Field(ge=0)
-    text: str
-    status: ClaimStatus
-    evidence_ids: tuple[UUID, ...] = ()
-    question: str | None = None
-    ask_role: str | None = None
-    dispute_reason: str | None = None
+    claim_id: UUID
 
 
-class AddClaim(_Op):
+class AddClaim(_ClaimFields):
     kind: Literal["add_claim"] = "add_claim"
     section: ClaimSection
-    text: str
-    status: ClaimStatus
-    evidence_ids: tuple[UUID, ...] = ()
-    question: str | None = None
-    ask_role: str | None = None
-    dispute_reason: str | None = None
 
 
 class WithdrawClaim(_Op):
-    """Retira uma afirmação incorreta; o motivo fica no registro de mudança."""
+    """Retira uma afirmação incorreta; o motivo fica estruturado no registro de mudança."""
 
     kind: Literal["withdraw_claim"] = "withdraw_claim"
-    claim_index: int = Field(ge=0)
+    claim_id: UUID
     reason: str = Field(min_length=MIN_REASON_LENGTH)
 
 
@@ -70,7 +78,7 @@ class ReviseExperimentOutcome(_Op):
     """Muda o desfecho declarado de um experimento. Nunca remove o experimento."""
 
     kind: Literal["revise_experiment_outcome"] = "revise_experiment_outcome"
-    experiment_index: int = Field(ge=0)
+    experiment_id: UUID
     outcome: ExperimentOutcomeKind
     evidence_ids: tuple[UUID, ...] = Field(min_length=1)
     reason: str = Field(min_length=MIN_REASON_LENGTH)
@@ -87,11 +95,12 @@ class ResolveMissing(_Op):
     """Encerra uma lacuna de `missing[]` com evidência que a responde.
 
     Lacuna `formal_hours` só se resolve por referência a eventos `FORMAL_HOURS_DECLARED`
-    (`formal_hours_event_ids`); nunca por número informado no texto.
+    (`formal_hours_event_ids`); nunca por número informado no texto. A conferência do tipo do
+    evento no ledger é dependência (#9/#39).
     """
 
     kind: Literal["resolve_missing"] = "resolve_missing"
-    missing_index: int = Field(ge=0)
+    missing_id: UUID
     evidence_ids: tuple[UUID, ...] = ()
     formal_hours_event_ids: tuple[UUID, ...] = ()
 
@@ -106,8 +115,6 @@ CorrectionOp = Annotated[
     Field(discriminator="kind"),
 ]
 
-FORMAL_HOURS_FIELD = "formal_hours"
-
 
 class ReportCorrection(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -120,7 +127,25 @@ class ReportCorrection(BaseModel):
 
 
 class InvalidCorrectionError(ValueError):
-    """Operação incompatível com a versão-base (índice inexistente, regra violada)."""
+    """Operação incompatível com a versão-base (ID inexistente, regra violada)."""
+
+
+@dataclass
+class _Work:
+    """Estado mutável local durante a aplicação; nunca sai desta função."""
+
+    new_version_id: UUID
+    claims: dict[UUID, dict[str, Any]]
+    experiments: dict[UUID, dict[str, Any]]
+    missing: dict[UUID, dict[str, Any]]
+    formal_hours: list[UUID]
+    summaries: list[str] = field(default_factory=list)
+    affected_claims: list[UUID] = field(default_factory=list)
+    added_claims: list[UUID] = field(default_factory=list)
+    withdrawn: list[WithdrawnClaim] = field(default_factory=list)
+    affected_experiments: list[UUID] = field(default_factory=list)
+    added_experiments: list[UUID] = field(default_factory=list)
+    resolved: list[ResolvedGap] = field(default_factory=list)
 
 
 def apply_correction(
@@ -132,16 +157,23 @@ def apply_correction(
 ) -> ReportVersion:
     """Gera a versão N+1 a partir da versão atual. Não altera nenhuma versão existente."""
     base = ensure_current(history, correction.base_version_id)
-    data = base.draft.model_dump(mode="python")
-    data["missing"] = list(data["missing"])
-    claims: list[dict[str, Any] | None] = list(data["claims"])
-    affected_claims: set[int] = set()
-    affected_experiments: set[int] = set()
-    summaries: list[str] = []
+    dumped = base.draft.model_dump(mode="python")
+    work = _Work(
+        new_version_id=new_version_id,
+        claims=dict(zip(base.claim_ids, dumped["claims"], strict=True)),
+        experiments=dict(zip(base.experiment_ids, dumped["experiments"], strict=True)),
+        missing=dict(zip(base.missing_ids, dumped["missing"], strict=True)),
+        formal_hours=list(dumped["formal_hours_event_ids"]),
+    )
     for op in correction.operations:
-        summaries.append(_apply_op(op, data, claims, affected_claims, affected_experiments))
-    data["claims"] = [claim for claim in claims if claim is not None]
-    data["missing"] = [item for item in data["missing"] if item is not None]
+        work.summaries.append(_apply_op(op, work))
+    data = {
+        **dumped,
+        "claims": list(work.claims.values()),
+        "experiments": list(work.experiments.values()),
+        "missing": list(work.missing.values()),
+        "formal_hours_event_ids": tuple(dict.fromkeys(work.formal_hours)),
+    }
     try:
         draft = ResearchReportDraft.model_validate(data)
     except ValueError as exc:
@@ -151,21 +183,38 @@ def apply_correction(
         tenant_id=base.tenant_id,
         number=base.number + 1,
         draft=draft,
+        claim_ids=tuple(work.claims),
+        experiment_ids=tuple(work.experiments),
+        missing_ids=tuple(work.missing),
         supersedes_id=base.id,
-        change=ChangeRecord(
-            author_id=correction.author_id,
-            author_role=correction.author_role,
-            reason=correction.reason,
-            operations=tuple(summaries),
-            affected_claims=tuple(sorted(affected_claims)),
-            affected_experiments=tuple(sorted(affected_experiments)),
-        ),
+        change=_change_record(correction, work),
         created_at=created_at,
         is_synthetic=base.is_synthetic,
     )
 
 
-def _claim_payload(op: ReviseClaim | AddClaim, section: Any) -> dict[str, Any]:
+def _change_record(correction: ReportCorrection, work: _Work) -> ChangeRecord:
+    return ChangeRecord(
+        author_id=correction.author_id,
+        author_role=correction.author_role,
+        reason=correction.reason,
+        operations=tuple(work.summaries),
+        affected_claim_ids=tuple(dict.fromkeys(work.affected_claims)),
+        added_claim_ids=tuple(work.added_claims),
+        withdrawn=tuple(work.withdrawn),
+        affected_experiment_ids=tuple(dict.fromkeys(work.affected_experiments)),
+        added_experiment_ids=tuple(work.added_experiments),
+        resolved_gaps=tuple(work.resolved),
+    )
+
+
+def _require(items: dict[UUID, dict[str, Any]], key: UUID, label: str) -> dict[str, Any]:
+    if key not in items:
+        raise InvalidCorrectionError(f"{label} {key} não existe na versão-base")
+    return items[key]
+
+
+def _claim_payload(op: _ClaimFields, section: Any) -> dict[str, Any]:
     return {
         "section": section,
         "text": op.text,
@@ -177,81 +226,67 @@ def _claim_payload(op: ReviseClaim | AddClaim, section: Any) -> dict[str, Any]:
     }
 
 
-def _check_index(index: int, items: Sequence[Any], label: str) -> None:
-    if index >= len(items) or items[index] is None:
-        raise InvalidCorrectionError(f"{label} {index} não existe na versão-base")
-
-
-def _apply_op(
-    op: CorrectionOp,
-    data: dict[str, Any],
-    claims: list[dict[str, Any] | None],
-    affected_claims: set[int],
-    affected_experiments: set[int],
-) -> str:
+def _apply_op(op: CorrectionOp, work: _Work) -> str:
     if isinstance(op, ReviseClaim):
-        _check_index(op.claim_index, claims, "afirmação")
-        current = claims[op.claim_index]
-        assert current is not None  # noqa: S101 — garantido por _check_index
-        claims[op.claim_index] = _claim_payload(op, current["section"])
-        affected_claims.add(op.claim_index)
-        return f"revise_claim[{op.claim_index}] → {op.status.value}"
+        current = _require(work.claims, op.claim_id, "afirmação")
+        work.claims[op.claim_id] = _claim_payload(op, current["section"])
+        work.affected_claims.append(op.claim_id)
+        return f"revise_claim {op.claim_id} → {op.status.value}"
     if isinstance(op, AddClaim):
-        claims.append(_claim_payload(op, op.section))
-        affected_claims.add(len(claims) - 1)
-        return f"add_claim[{len(claims) - 1}] {op.section.value}"
+        new_id = item_id(work.new_version_id, ItemKind.CLAIM, len(work.added_claims))
+        work.claims[new_id] = _claim_payload(op, op.section)
+        work.added_claims.append(new_id)
+        return f"add_claim {new_id} {op.section.value}"
     if isinstance(op, WithdrawClaim):
-        _check_index(op.claim_index, claims, "afirmação")
-        claims[op.claim_index] = None
-        affected_claims.add(op.claim_index)
-        return f"withdraw_claim[{op.claim_index}]: {op.reason}"
-    if isinstance(op, (ReviseExperimentOutcome, AddExperiment)):
-        return _apply_experiment_op(op, data, affected_experiments)
-    return _apply_resolve_missing(op, data)
-
-
-def _apply_experiment_op(
-    op: ReviseExperimentOutcome | AddExperiment,
-    data: dict[str, Any],
-    affected: set[int],
-) -> str:
-    experiments: list[dict[str, Any]] = list(data["experiments"])
+        _require(work.claims, op.claim_id, "afirmação")
+        del work.claims[op.claim_id]
+        work.withdrawn.append(WithdrawnClaim(claim_id=op.claim_id, reason=op.reason))
+        return f"withdraw_claim {op.claim_id}: {op.reason}"
+    if isinstance(op, ReviseExperimentOutcome):
+        return _revise_experiment(op, work)
     if isinstance(op, AddExperiment):
-        experiments.append(
-            {"description": op.description, "outcome": op.outcome, "evidence_ids": op.evidence_ids}
-        )
-        affected.add(len(experiments) - 1)
-        data["experiments"] = experiments
-        return f"add_experiment[{len(experiments) - 1}] {op.outcome.value}"
-    _check_index(op.experiment_index, experiments, "experimento")
-    previous = experiments[op.experiment_index]
+        new_id = item_id(work.new_version_id, ItemKind.EXPERIMENT, len(work.added_experiments))
+        work.experiments[new_id] = {
+            "description": op.description,
+            "outcome": op.outcome,
+            "evidence_ids": op.evidence_ids,
+        }
+        work.added_experiments.append(new_id)
+        return f"add_experiment {new_id} {op.outcome.value}"
+    return _resolve_missing(op, work)
+
+
+def _revise_experiment(op: ReviseExperimentOutcome, work: _Work) -> str:
+    previous = _require(work.experiments, op.experiment_id, "experimento")
     merged = tuple(dict.fromkeys((*previous["evidence_ids"], *op.evidence_ids)))
-    experiments[op.experiment_index] = {**previous, "outcome": op.outcome, "evidence_ids": merged}
-    affected.add(op.experiment_index)
-    data["experiments"] = experiments
+    work.experiments[op.experiment_id] = {
+        **previous,
+        "outcome": op.outcome,
+        "evidence_ids": merged,
+    }
+    work.affected_experiments.append(op.experiment_id)
     old = ExperimentOutcomeKind(previous["outcome"]).value
-    return f"revise_experiment[{op.experiment_index}] {old} → {op.outcome.value}: {op.reason}"
+    return f"revise_experiment {op.experiment_id} {old} → {op.outcome.value}: {op.reason}"
 
 
-def _apply_resolve_missing(op: ResolveMissing, data: dict[str, Any]) -> str:
-    missing: list[dict[str, Any] | None] = data["missing"]
-    _check_index(op.missing_index, missing, "lacuna")
-    item = missing[op.missing_index]
-    assert item is not None  # noqa: S101 — garantido por _check_index
+def _resolve_missing(op: ResolveMissing, work: _Work) -> str:
+    item = _require(work.missing, op.missing_id, "lacuna")
     is_hours = item["field"] == FORMAL_HOURS_FIELD
     if is_hours and not op.formal_hours_event_ids:
         msg = "lacuna formal_hours só se resolve com formal_hours_event_ids (evento formal)"
         raise InvalidCorrectionError(msg)
     if not is_hours and op.formal_hours_event_ids:
-        msg = "formal_hours_event_ids só se aplica à lacuna formal_hours"
-        raise InvalidCorrectionError(msg)
+        raise InvalidCorrectionError("formal_hours_event_ids só se aplica à lacuna formal_hours")
     if not is_hours and not op.evidence_ids:
         raise InvalidCorrectionError("lacuna só se resolve com evidência citada")
-    if is_hours:
-        current = tuple(data["formal_hours_event_ids"])
-        data["formal_hours_event_ids"] = tuple(
-            dict.fromkeys((*current, *op.formal_hours_event_ids))
+    work.formal_hours.extend(op.formal_hours_event_ids)
+    del work.missing[op.missing_id]
+    work.resolved.append(
+        ResolvedGap(
+            missing_id=op.missing_id,
+            field=item["field"],
+            evidence_ids=op.evidence_ids,
+            formal_hours_event_ids=op.formal_hours_event_ids,
         )
-    missing[op.missing_index] = None
-    refs = ",".join(str(e) for e in (*op.evidence_ids, *op.formal_hours_event_ids))
-    return f"resolve_missing[{op.missing_index}] {item['field']} ← {refs}"
+    )
+    return f"resolve_missing {op.missing_id} {item['field']}"
