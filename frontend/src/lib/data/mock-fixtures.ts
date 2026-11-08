@@ -20,7 +20,7 @@ export const PROJECT: Project = {
   organization_name: "Lumen Sensores Ltda. (fictícia)",
   name: "Calibração adaptativa de sensores ópticos",
   objective: "Reduzir o erro de medição dos sensores ópticos sob variação térmica para menos de 2%.",
-  synthetic: true,
+  is_synthetic: true,
 };
 
 export const PERIOD: ReportingPeriod = {
@@ -34,10 +34,10 @@ export const PERIOD: ReportingPeriod = {
 };
 
 export const PEOPLE: Person[] = [
-  { id: "p-ana", name: "Ana Ribeiro", role: "researcher", project_ids: [PROJECT.id], synthetic: true },
-  { id: "p-bruno", name: "Bruno Costa", role: "researcher", project_ids: [PROJECT.id], synthetic: true },
-  { id: "p-marina", name: "Marina Duarte", role: "manager", project_ids: [PROJECT.id], synthetic: true },
-  { id: "p-rafael", name: "Rafael Lima", role: "fiscal", project_ids: [PROJECT.id], synthetic: true },
+  { id: "p-ana", name: "Ana Ribeiro", role: "researcher", project_ids: [PROJECT.id], is_synthetic: true },
+  { id: "p-bruno", name: "Bruno Costa", role: "researcher", project_ids: [PROJECT.id], is_synthetic: true },
+  { id: "p-marina", name: "Marina Duarte", role: "manager", project_ids: [PROJECT.id], is_synthetic: true },
+  { id: "p-rafael", name: "Rafael Lima", role: "fiscal", project_ids: [PROJECT.id], is_synthetic: true },
 ];
 
 const CAPTURED = "2026-11-01T09:00:00-03:00";
@@ -55,7 +55,7 @@ export const EVIDENCE: EvidenceVersion[] = [
     author: "Ana Ribeiro",
     locator: "descrição do PR, seção Resultados",
     excerpt: "Erro médio caiu de 4,1% para 3,6% no conjunto B (bancada térmica 15–40 °C).",
-    synthetic: true,
+    is_synthetic: true,
   },
   {
     id: "ev-pr43",
@@ -68,7 +68,7 @@ export const EVIDENCE: EvidenceVersion[] = [
     author: "Ana Ribeiro",
     locator: "comentário de 2026-10-22",
     excerpt: "Não atingiu a meta: erro de 5,3% contra meta de 2%, pior que a baseline. Abandonado.",
-    synthetic: true,
+    is_synthetic: true,
   },
   {
     id: "ev-commits-bruno",
@@ -81,7 +81,7 @@ export const EVIDENCE: EvidenceVersion[] = [
     author: "Bruno Costa",
     locator: "14 commits entre 2026-10-03 e 2026-10-29",
     excerpt: "Integra a coleta automática da bancada B ao pipeline de calibração.",
-    synthetic: true,
+    is_synthetic: true,
   },
   {
     id: "ev-notion-bruno",
@@ -94,7 +94,7 @@ export const EVIDENCE: EvidenceVersion[] = [
     author: "Bruno Costa",
     locator: "bloco 'Ensaios'",
     excerpt: "Ensaios na bancada B com 3 sensores; deriva térmica medida a cada 5 °C.",
-    synthetic: true,
+    is_synthetic: true,
   },
   {
     id: "ev-horas-bruno",
@@ -107,7 +107,7 @@ export const EVIDENCE: EvidenceVersion[] = [
     author: "Bruno Costa",
     locator: "aba Outubro, linha total",
     excerpt: "Total no projeto: 32 h.",
-    synthetic: true,
+    is_synthetic: true,
   },
   {
     id: "ev-nf1023",
@@ -120,7 +120,7 @@ export const EVIDENCE: EvidenceVersion[] = [
     author: null,
     locator: "itens 1 e 2",
     excerpt: "Notebook de bancada (R$ 6.200,00) e licença anual de software de simulação (R$ 2.250,00).",
-    synthetic: true,
+    is_synthetic: true,
   },
   {
     id: "ev-boleto1023",
@@ -133,7 +133,7 @@ export const EVIDENCE: EvidenceVersion[] = [
     author: null,
     locator: "página 1",
     excerpt: "Pagamento de R$ 8.450,00 referente à NF 1023.",
-    synthetic: true,
+    is_synthetic: true,
   },
 ];
 
@@ -302,7 +302,7 @@ export const EXPENSES: Expense[] = [
     allocations: [{ target_label: PROJECT.name, share: null, basis: null }],
     excluded_reason: null,
     evidence_ids: ["ev-nf1023"],
-    synthetic: true,
+    is_synthetic: true,
   },
   {
     id: "exp-boleto1023",
@@ -314,7 +314,7 @@ export const EXPENSES: Expense[] = [
     allocations: [],
     excluded_reason: "Mesmo gasto da NF 1023 (pagamento). Não é contado de novo.",
     evidence_ids: ["ev-boleto1023"],
-    synthetic: true,
+    is_synthetic: true,
   },
   {
     id: "exp-calibracao",
@@ -326,7 +326,7 @@ export const EXPENSES: Expense[] = [
     allocations: [],
     excluded_reason: null,
     evidence_ids: [],
-    synthetic: true,
+    is_synthetic: true,
   },
 ];
 

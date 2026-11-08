@@ -206,7 +206,7 @@ export function applyRespond(
     author: personName(input.respondedBy),
     locator: null,
     excerpt: input.response,
-    synthetic: true,
+    is_synthetic: true,
   };
   const answered: PendingRequest = { ...request, status: "answered", response: input.response };
   const s2: MockState = {
