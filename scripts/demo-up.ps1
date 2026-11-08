@@ -43,7 +43,7 @@ function Stop-Pids {
     $file = Join-Path $logs "worker.pid"
     if (Test-Path $file) {
         # `uv run` é só o lançador: encerra a árvore inteira para não deixar o python órfão.
-        Get-Content $file | ForEach-Object { taskkill /PID ([int]$_) /T /F *> $null }
+        Get-Content $file | ForEach-Object { cmd /c "taskkill /PID $([int]$_) /T /F >nul 2>&1" }
         Remove-Item $file -Force
     }
 }
