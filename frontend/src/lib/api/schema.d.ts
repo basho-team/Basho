@@ -41,6 +41,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project */
+        get: operations["get_project_api_v1_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pending */
+        get: operations["list_pending_api_v1_projects__project_id__pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/dossier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dossier */
+        get: operations["get_dossier_api_v1_projects__project_id__dossier_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pending/{pending_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Pending
+         * @description Ação humana do papel designado: `user_correction` com `supersedes` = artefato.
+         */
+        post: operations["answer_pending_api_v1_pending__pending_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{artifact_id}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Artifact
+         * @description Ação FORMAL, só humano com papel `manager` (ADR-0005). Nunca exposta ao agente.
+         */
+        post: operations["decide_artifact_api_v1_artifacts__artifact_id__approval_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -62,6 +153,52 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivityOut */
+        ActivityOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Is Synthetic */
+            is_synthetic: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * Actor
+         * @description Quem originou o evento. Agentes registram papel e modelo (ADR-0004).
+         */
+        Actor: {
+            type: components["schemas"]["ActorType"];
+            /**
+             * Id
+             * @description user id, 'maker', 'checker' ou 'system'
+             */
+            id: string;
+            /**
+             * Model
+             * @description Ex.: claude-sonnet-5-5; obrigatório p/ agente
+             */
+            model?: string | null;
+        };
+        /**
+         * ActorType
+         * @enum {string}
+         */
+        ActorType: "user" | "agent" | "system";
         /** AddClaim */
         AddClaim: {
             /** Text */
@@ -98,6 +235,71 @@ export interface components {
             /** Evidence Ids */
             evidence_ids: string[];
         };
+        /** AgentRunMetrics */
+        AgentRunMetrics: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Model */
+            model: string;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Cost Usd */
+            cost_usd: number;
+        };
+        /**
+         * ApprovalDecision
+         * @enum {string}
+         */
+        ApprovalDecision: "approve" | "reject";
+        /**
+         * ApprovalIn
+         * @description Ação FORMAL: só via endpoint humano, papel `manager` (ADR-0005).
+         */
+        ApprovalIn: {
+            decision: components["schemas"]["ApprovalDecision"];
+            /** Comment */
+            comment?: string | null;
+        };
+        /** ApprovalOut */
+        ApprovalOut: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            decision: components["schemas"]["ApprovalDecision"];
+            status: components["schemas"]["ArtifactStatus"];
+            /**
+             * Approver Id
+             * Format: uuid
+             */
+            approver_id: string;
+            /** Comment */
+            comment: string | null;
+            /**
+             * Evidence Event Id
+             * Format: uuid
+             */
+            evidence_event_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ArtifactStatus
+         * @description Estados de artefatos formais (docs/architecture.md §5).
+         * @enum {string}
+         */
+        ArtifactStatus: "draft" | "proposed" | "verified" | "needs_human" | "approved" | "rejected" | "needs_review";
         /**
          * ChangeRecord
          * @description Por que, por quem e o que mudou em relação à versão anterior (tudo por ID estável).
@@ -148,6 +350,19 @@ export interface components {
              */
             resolved_gaps: components["schemas"]["ResolvedGap"][];
         };
+        /** CheckIssue */
+        CheckIssue: {
+            /**
+             * Code
+             * @description Ex.: uncited_claim, inferred_hours, prompt_injection
+             */
+            code: string;
+            /** Message */
+            message: string;
+            severity: components["schemas"]["IssueSeverity"];
+            /** Evidence Id */
+            evidence_id?: string | null;
+        };
         /**
          * ClaimSection
          * @enum {string}
@@ -163,6 +378,18 @@ export interface components {
          */
         ClaimStatus: "supported" | "pending" | "disputed";
         /**
+         * ConflictOut
+         * @description 409: a ação não vale no estado atual (ex.: artefato não `verified`, pendência fechada).
+         */
+        ConflictOut: {
+            /** Detail */
+            detail: string;
+            /** Code */
+            code: string;
+            /** Current Status */
+            current_status?: string | null;
+        };
+        /**
          * CorrectionIn
          * @description Correção enviada com a revisão; vira `ReportCorrection` sobre a versão do path.
          */
@@ -171,6 +398,111 @@ export interface components {
             reason: string;
             /** Operations */
             operations: (components["schemas"]["ReviseClaim"] | components["schemas"]["AddClaim"] | components["schemas"]["WithdrawClaim"] | components["schemas"]["ReviseExperimentOutcome"] | components["schemas"]["AddExperiment"] | components["schemas"]["ResolveMissing"])[];
+        };
+        /** DossierEntryOut */
+        DossierEntryOut: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Activity Id */
+            activity_id: string | null;
+            /** Title */
+            title: string;
+            status: components["schemas"]["ArtifactStatus"];
+            /**
+             * Content
+             * @description Rascunho do Maker (`draft`)
+             */
+            content: {
+                [key: string]: unknown;
+            };
+            /**
+             * Evidence
+             * @description Fontes citadas
+             */
+            evidence: components["schemas"]["EvidenceEvent"][];
+            /** Verifications */
+            verifications: components["schemas"]["VerificationResult"][];
+            /**
+             * History
+             * @description Artefato, vereditos, correções e decisões, do mais antigo ao mais novo
+             */
+            history: components["schemas"]["EvidenceEvent"][];
+            approval: components["schemas"]["ApprovalOut"] | null;
+            /** Run Id */
+            run_id: string | null;
+            /**
+             * Runs
+             * @description Vazio até existir agent_runs (#10)
+             */
+            runs: components["schemas"]["AgentRunMetrics"][];
+        };
+        /** DossierOut */
+        DossierOut: {
+            project: components["schemas"]["ProjectOut"];
+            /** Entries */
+            entries: components["schemas"]["DossierEntryOut"][];
+        };
+        /**
+         * EventKind
+         * @description Tipos de fato registrados no ledger.
+         * @enum {string}
+         */
+        EventKind: "commit_observed" | "pull_request_observed" | "issue_observed" | "technical_justification" | "activity_record" | "formal_hours_declared" | "expense_declared" | "user_confirmation" | "user_correction" | "verification_result" | "status_changed";
+        /**
+         * EventSource
+         * @description Origem do fato. Só `USER` e `FORMAL_SYSTEM` podem originar dados formais.
+         * @enum {string}
+         */
+        EventSource: "github" | "user" | "formal_system" | "agent" | "system";
+        /**
+         * EvidenceEvent
+         * @description Evento persistido (somente leitura).
+         */
+        EvidenceEvent: {
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            kind: components["schemas"]["EventKind"];
+            source: components["schemas"]["EventSource"];
+            /**
+             * Source Ref
+             * @description sha, PR#, issue#, doc id
+             */
+            source_ref?: string | null;
+            actor: components["schemas"]["Actor"];
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Supersedes */
+            supersedes?: string | null;
+            /**
+             * Is Synthetic
+             * @default false
+             */
+            is_synthetic: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * ExperimentOutcome
@@ -202,6 +534,11 @@ export interface components {
             status: string;
         };
         /**
+         * IssueSeverity
+         * @enum {string}
+         */
+        IssueSeverity: "blocker" | "major" | "minor";
+        /**
          * MissingInformation
          * @description Lacuna que o Maker não pode preencher sozinho → vira pendência.
          */
@@ -220,10 +557,129 @@ export interface components {
             ask_role: string;
         };
         /**
+         * PendingAnswerIn
+         * @description Resposta/correção humana: vira `user_correction` com `supersedes` = artefato.
+         */
+        PendingAnswerIn: {
+            /** Answer */
+            answer: string;
+            /**
+             * Corrected Payload
+             * @description Campos corrigidos pelo humano (opcional)
+             */
+            corrected_payload?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** PendingAnswerOut */
+        PendingAnswerOut: {
+            pending: components["schemas"]["PendingItemOut"];
+            /**
+             * Correction Event Id
+             * Format: uuid
+             */
+            correction_event_id: string;
+        };
+        /**
+         * PendingItemOut
+         * @description Pendência aberta a partir de um `verification_result` (`needs_human` ou `verified`).
+         */
+        PendingItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Activity Id */
+            activity_id: string | null;
+            kind: components["schemas"]["PendingKind"];
+            /** Title */
+            title: string;
+            /**
+             * Question
+             * @description Pergunta objetiva; texto do Maker é dado, não instrução
+             */
+            question: string;
+            /** Assignee Role */
+            assignee_role: string;
+            /** Artifact Id */
+            artifact_id: string | null;
+            artifact_status: components["schemas"]["ArtifactStatus"] | null;
+            /**
+             * Verification Event Id
+             * Format: uuid
+             */
+            verification_event_id: string;
+            status: components["schemas"]["PendingStatus"];
+            /**
+             * Resolved
+             * @description status != open (compatibilidade)
+             */
+            resolved: boolean;
+            /** Response */
+            response: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * PendingKind
+         * @enum {string}
+         */
+        PendingKind: "missing_justification" | "missing_activity_record" | "checker_disagreement" | "approval_required" | "tool_failure" | "needs_review";
+        /** PendingPageOut */
+        PendingPageOut: {
+            /** Items */
+            items: components["schemas"]["PendingItemOut"][];
+            /**
+             * Next Offset
+             * @description Offset da próxima página; null se acabou
+             */
+            next_offset: number | null;
+        };
+        /**
+         * PendingStatus
+         * @enum {string}
+         */
+        PendingStatus: "open" | "answered" | "resolved";
+        /**
          * Periodicity
          * @enum {string}
          */
         Periodicity: "weekly" | "biweekly" | "monthly" | "custom";
+        /** ProjectOut */
+        ProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Is Synthetic */
+            is_synthetic: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Activities */
+            activities: components["schemas"]["ActivityOut"][];
+            /**
+             * Open Pending
+             * @description Pendências com status `open`
+             */
+            open_pending: number;
+        };
         /**
          * ReportClaim
          * @description Afirmação de relatório com status explícito (distinta de `Claim`, que é sempre citada).
@@ -605,6 +1061,13 @@ export interface components {
             /** Review Id */
             review_id: string | null;
         };
+        /** UnsupportedClaim */
+        UnsupportedClaim: {
+            /** Claim Text */
+            claim_text: string;
+            /** Reason */
+            reason: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -617,6 +1080,33 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * Verdict
+         * @enum {string}
+         */
+        Verdict: "pass" | "fail";
+        /**
+         * VerificationResult
+         * @description Saída do Checker, validada por Pydantic. Também usada pelos checks determinísticos.
+         */
+        VerificationResult: {
+            verdict: components["schemas"]["Verdict"];
+            /**
+             * Issues
+             * @default []
+             */
+            issues: components["schemas"]["CheckIssue"][];
+            /**
+             * Unsupported Claims
+             * @default []
+             */
+            unsupported_claims: components["schemas"]["UnsupportedClaim"][];
+            /**
+             * Checker
+             * @description 'deterministic' ou id do modelo
+             */
+            checker: string;
         };
         /**
          * VersionConflictOut
@@ -739,6 +1229,199 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionConflictOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_api_v1_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pending_api_v1_projects__project_id__pending_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PendingStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dossier_api_v1_projects__project_id__dossier_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DossierOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_pending_api_v1_pending__pending_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                pending_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PendingAnswerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingAnswerOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_artifact_api_v1_artifacts__artifact_id__approval_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictOut"];
                 };
             };
             /** @description Validation Error */
