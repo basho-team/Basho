@@ -7,6 +7,20 @@ import { SourcesPanel } from "@/components/demo-sources/sources-panel";
 import { accountUser, DEMO_ACCOUNTS } from "@/lib/auth/shared";
 import { EXAMPLE_LINKS } from "@/lib/demo-sources/links";
 
+/**
+ * Armazenamento em memória: o Node recente expõe um `localStorage` global próprio que esconde o do
+ * jsdom (e some sem flag), então o teste não depende de qual dos dois existe naquele Node.
+ */
+class MemoryStorage implements Storage {
+  private data = new Map<string, string>();
+  get length() { return this.data.size; }
+  clear() { this.data.clear(); }
+  getItem(key: string) { return this.data.get(key) ?? null; }
+  key(index: number) { return [...this.data.keys()][index] ?? null; }
+  removeItem(key: string) { this.data.delete(key); }
+  setItem(key: string, value: string) { this.data.set(key, String(value)); }
+}
+
 const EQUIPE = DEMO_ACCOUNTS.find(account => account.id === "equipe")!;
 
 function setup(stepDelayMs = 0) {
@@ -30,7 +44,7 @@ async function finishRun() {
 }
 
 beforeEach(() => {
-  window.localStorage.clear();
+  Object.defineProperty(window, "localStorage", { value: new MemoryStorage(), configurable: true });
 });
 afterEach(() => {
   cleanup();
