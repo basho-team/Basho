@@ -73,7 +73,6 @@ export function EvidencePanel({ ctx, userId }: { ctx: DemoContext; userId: strin
           <select className={inputClass} value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="activity_record">Registro de atividade</option>
             <option value="technical_justification">Justificativa técnica / resultado</option>
-            <option value="formal_hours_declared">Horas (declaração formal)</option>
           </select>
         </label>
         <label className="text-sm">Título
@@ -82,6 +81,7 @@ export function EvidencePanel({ ctx, userId }: { ctx: DemoContext; userId: strin
         <label className="text-sm sm:col-span-2">Descrição
           <textarea className={inputClass} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} minLength={10} required />
         </label>
+        <p className="text-xs text-zinc-500 sm:col-span-2">Horas não são registradas aqui: vêm do registro formal da coordenação/RH.</p>
         {kind === "formal_hours_declared" && (
           <label className="text-sm">Horas declaradas
             <input className={inputClass} type="number" min={1} max={744} value={hours} onChange={(e) => setHours(e.target.value)} required />

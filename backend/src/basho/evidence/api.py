@@ -20,6 +20,7 @@ from basho.evidence.contracts import (
     NewEvidenceEvent,
 )
 from basho.reports.api import Reviewer, _scope, current_reviewer
+from basho.reports.versions import ReviewerRole
 
 router = APIRouter(tags=["evidence"])
 
@@ -60,6 +61,11 @@ async def register_evidence(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "tipo não registrável por humano"
         )
     is_hours = body.kind is EventKind.FORMAL_HOURS_DECLARED
+    if is_hours and reviewer.role is not ReviewerRole.MANAGER:
+        # Regra 6: horas formais vêm de registro confirmado por quem tem autoridade
+        # (coordenação/RH), nunca autodeclaradas pelo pesquisador.
+        msg = "horas formais só podem ser declaradas pela coordenação"
+        raise HTTPException(status.HTTP_403_FORBIDDEN, msg)
     if is_hours != (body.hours is not None):
         msg = "horas só (e obrigatoriamente) em formal_hours_declared"
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg)

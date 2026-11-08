@@ -56,8 +56,12 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
         yield http
 
 
-async def _evidence(client: AsyncClient, project: UUID, **body: Any) -> str:
-    response = await client.post(f"/api/v1/projects/{project}/evidence", json=body, headers=ANA_H)
+async def _evidence(
+    client: AsyncClient, project: UUID, headers: dict[str, str] | None = None, **body: Any
+) -> str:
+    response = await client.post(
+        f"/api/v1/projects/{project}/evidence", json=body, headers=headers or ANA_H
+    )
     assert response.status_code == 201, response.text
     return str(response.json()["id"])
 
@@ -120,6 +124,7 @@ async def test_full_journey_researcher_manager_fiscal(client: AsyncClient) -> No
     hours = await _evidence(
         client,
         project,
+        _who(CARLA, "manager"),
         kind="formal_hours_declared",
         hours=80,
         title="Horas outubro",
@@ -262,3 +267,16 @@ async def test_demo_context_reports_ai_unavailable_without_keys(client: AsyncCli
     assert body["is_synthetic"] is True
     assert isinstance(body["ai_maker_available"], bool)
     assert "não são acionados pela interface" in body["ai_detail"]
+
+
+async def test_researcher_cannot_self_declare_formal_hours(client: AsyncClient) -> None:
+    body = {
+        "kind": "formal_hours_declared",
+        "hours": 40,
+        "title": "Minhas horas",
+        "description": "Autodeclaração não é registro formal.",
+    }
+    url = f"/api/v1/projects/{uuid4()}/evidence"
+    assert (await client.post(url, json=body, headers=ANA_H)).status_code == 403
+    manager = await client.post(url, json=body, headers=_who(CARLA, "manager"))
+    assert manager.status_code == 201
