@@ -1,0 +1,38 @@
+{
+  "project_id": "11111111-1111-4111-8111-111111111111",
+  "activity_id": "22222222-2222-4222-8222-222222222222",
+  "title": "Quantização do modelo de detecção de falhas",
+  "summary": "Experimentos de quantização para reduzir latência de inferência embarcada mantendo precisão aceitável.",
+  "claims": [
+    {
+      "section": "technological_challenge",
+      "text": "Reduzir latência de inferência sem perda relevante de precisão em hardware embarcado.",
+      "evidence_ids": ["aaaaaaaa-0000-4000-8000-000000000042"]
+    },
+    {
+      "section": "result",
+      "text": "Int8 dinâmico reduziu a latência em 38%, com queda de 4,1 p.p. de precisão no dataset de vibração.",
+      "evidence_ids": ["aaaaaaaa-0000-4000-8000-000000000042", "bbbbbbbb-0000-4000-8000-0000000c94ab"]
+    },
+    {
+      "section": "uncertainty",
+      "text": "Não se sabe se a perda de precisão decorre da calibração ou do desbalanceamento do dataset.",
+      "evidence_ids": ["aaaaaaaa-0000-4000-8000-000000000042"]
+    }
+  ],
+  "formal_hours_event_ids": [],
+  "participant_ids": [],
+  "missing": [
+    {
+      "field": "formal_hours",
+      "question": "Quantas horas cada participante dedicou a esta atividade no período, segundo o registro oficial?",
+      "ask_role": "coordenador"
+    },
+    {
+      "field": "technical_justification",
+      "question": "Qual hipótese motivou o rebalanceamento com SMOTE (PR #43) e qual critério define sucesso?",
+      "ask_role": "pesquisador"
+    }
+  ],
+  "eligibility_note": "Potencialmente qualificável, sujeito a análise dos responsáveis."
+}
