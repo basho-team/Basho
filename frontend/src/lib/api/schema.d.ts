@@ -4,6 +4,43 @@
  */
 
 export interface paths {
+    "/api/v1/reports/{report_version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report Version */
+        get: operations["get_report_version_api_v1_reports__report_version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/{report_version_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review Report Version
+         * @description Ação formal, só humano (ADR-0005). Versão que não é a atual → 409, nada gravado.
+         */
+        post: operations["review_report_version_api_v1_reports__report_version_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -25,6 +62,137 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AddClaim */
+        AddClaim: {
+            /** Text */
+            text: string;
+            status: components["schemas"]["ClaimStatus"];
+            /**
+             * Evidence Ids
+             * @default []
+             */
+            evidence_ids: string[];
+            /** Question */
+            question?: string | null;
+            /** Ask Role */
+            ask_role?: string | null;
+            /** Dispute Reason */
+            dispute_reason?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "add_claim";
+            section: components["schemas"]["ClaimSection"];
+        };
+        /** AddExperiment */
+        AddExperiment: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "add_experiment";
+            /** Description */
+            description: string;
+            outcome: components["schemas"]["ExperimentOutcomeKind"];
+            /** Evidence Ids */
+            evidence_ids: string[];
+        };
+        /**
+         * ChangeRecord
+         * @description Por que, por quem e o que mudou em relação à versão anterior (tudo por ID estável).
+         */
+        ChangeRecord: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Author Role */
+            author_role: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Operations
+             * @description Resumo legível
+             */
+            operations: string[];
+            /**
+             * Affected Claim Ids
+             * @default []
+             */
+            affected_claim_ids: string[];
+            /**
+             * Added Claim Ids
+             * @default []
+             */
+            added_claim_ids: string[];
+            /**
+             * Withdrawn
+             * @default []
+             */
+            withdrawn: components["schemas"]["WithdrawnClaim"][];
+            /**
+             * Affected Experiment Ids
+             * @default []
+             */
+            affected_experiment_ids: string[];
+            /**
+             * Added Experiment Ids
+             * @default []
+             */
+            added_experiment_ids: string[];
+            /**
+             * Resolved Gaps
+             * @default []
+             */
+            resolved_gaps: components["schemas"]["ResolvedGap"][];
+        };
+        /**
+         * ClaimSection
+         * @enum {string}
+         */
+        ClaimSection: "technological_challenge" | "hypothesis" | "method" | "result" | "uncertainty";
+        /**
+         * ClaimStatus
+         * @description Status de uma afirmação de relatório (ADR-0009).
+         *
+         *     `supported` aqui é só pré-condição de schema (≥ 1 evidência citada); a correspondência
+         *     real entre texto e evidência é verificada pelos checks determinísticos (#9) e pelo Checker.
+         * @enum {string}
+         */
+        ClaimStatus: "supported" | "pending" | "disputed";
+        /**
+         * CorrectionIn
+         * @description Correção enviada com a revisão; vira `ReportCorrection` sobre a versão do path.
+         */
+        CorrectionIn: {
+            /** Reason */
+            reason: string;
+            /** Operations */
+            operations: (components["schemas"]["ReviseClaim"] | components["schemas"]["AddClaim"] | components["schemas"]["WithdrawClaim"] | components["schemas"]["ReviseExperimentOutcome"] | components["schemas"]["AddExperiment"] | components["schemas"]["ResolveMissing"])[];
+        };
+        /**
+         * ExperimentOutcome
+         * @description Desfecho de um experimento no período. Negativo e inconclusivo são resultados válidos.
+         */
+        ExperimentOutcome: {
+            /** Description */
+            description: string;
+            outcome: components["schemas"]["ExperimentOutcomeKind"];
+            /** Evidence Ids */
+            evidence_ids: string[];
+        };
+        /**
+         * ExperimentOutcomeKind
+         * @enum {string}
+         */
+        ExperimentOutcomeKind: "positive" | "negative" | "inconclusive";
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /**
          * HealthResponse
          * @description Resposta do health check.
@@ -32,6 +200,469 @@ export interface components {
         HealthResponse: {
             /** Status */
             status: string;
+        };
+        /**
+         * MissingInformation
+         * @description Lacuna que o Maker não pode preencher sozinho → vira pendência.
+         */
+        MissingInformation: {
+            /** Field */
+            field: string;
+            /**
+             * Question
+             * @description Pergunta objetiva ao responsável
+             */
+            question: string;
+            /**
+             * Ask Role
+             * @description Ex.: pesquisador, coordenador, financeiro
+             */
+            ask_role: string;
+        };
+        /**
+         * Periodicity
+         * @enum {string}
+         */
+        Periodicity: "weekly" | "biweekly" | "monthly" | "custom";
+        /**
+         * ReportClaim
+         * @description Afirmação de relatório com status explícito (distinta de `Claim`, que é sempre citada).
+         *
+         *     Regras de schema (campos de outro status são proibidos):
+         *     - `supported` ⇒ ≥ 1 `evidence_id`; sem `question`, `ask_role` nem `dispute_reason`;
+         *     - `pending` ⇒ `question` objetiva e `ask_role` (vira pendência); sem `dispute_reason`;
+         *     - `disputed` ⇒ `dispute_reason` e ≥ 1 evidência em conflito; sem `question`/`ask_role`.
+         *
+         *     `supported` não garante que a evidência sustente o texto: isso é papel do Checker.
+         */
+        ReportClaim: {
+            section: components["schemas"]["ClaimSection"];
+            /** Text */
+            text: string;
+            status: components["schemas"]["ClaimStatus"];
+            /**
+             * Evidence Ids
+             * @default []
+             */
+            evidence_ids: string[];
+            /** Question */
+            question?: string | null;
+            /** Ask Role */
+            ask_role?: string | null;
+            /** Dispute Reason */
+            dispute_reason?: string | null;
+        };
+        /** ReportReview */
+        ReportReview: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version Id
+             * Format: uuid
+             * @description Versão exata revisada
+             */
+            version_id: string;
+            /**
+             * Reviewer Id
+             * Format: uuid
+             */
+            reviewer_id: string;
+            reviewer_role: components["schemas"]["ReviewerRole"];
+            decision: components["schemas"]["ReviewDecision"];
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Reviewed At
+             * Format: date-time
+             */
+            reviewed_at: string;
+        };
+        /** ReportStatus */
+        ReportStatus: {
+            /**
+             * Researcher Id
+             * Format: uuid
+             */
+            researcher_id: string;
+            /**
+             * Current Version Id
+             * Format: uuid
+             */
+            current_version_id: string;
+            /** Current Version Number */
+            current_version_number: number;
+            researcher: components["schemas"]["RoleReview"];
+            manager: components["schemas"]["RoleReview"];
+            /** Approved Version Number */
+            approved_version_number: number | null;
+            /** Approval Outdated */
+            approval_outdated: boolean;
+            /** Formal Hours Event Ids */
+            formal_hours_event_ids: string[];
+        };
+        /**
+         * ReportVersion
+         * @description Snapshot imutável. Alteração = nova versão com `supersedes_id` (ADR-0003).
+         */
+        ReportVersion: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Number */
+            number: number;
+            draft: components["schemas"]["ResearchReportDraft"];
+            /** Claim Ids */
+            claim_ids: string[];
+            /** Experiment Ids */
+            experiment_ids: string[];
+            /** Missing Ids */
+            missing_ids: string[];
+            /** Supersedes Id */
+            supersedes_id?: string | null;
+            change?: components["schemas"]["ChangeRecord"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Is Synthetic
+             * @default false
+             */
+            is_synthetic: boolean;
+        };
+        /** ReportVersionOut */
+        ReportVersionOut: {
+            version: components["schemas"]["ReportVersion"];
+            /** @description Revisão por papel sobre a versão ATUAL da série */
+            status: components["schemas"]["ReportStatus"];
+            /** Is Current */
+            is_current: boolean;
+            /**
+             * Current Version Id
+             * Format: uuid
+             */
+            current_version_id: string;
+            /**
+             * Reporting Period Id
+             * Format: uuid
+             */
+            reporting_period_id: string;
+            /**
+             * Content Hash
+             * @description SHA-256 do JSON canônico do draft
+             */
+            content_hash: string;
+            /**
+             * Evidence Event Id
+             * Format: uuid
+             * @description Evento do ledger que registrou a versão
+             */
+            evidence_event_id: string;
+        };
+        /**
+         * ReportingPeriod
+         * @description Período coberto por um relatório de pesquisa (datas inclusivas, no fuso `timezone`).
+         *
+         *     É um período operacional de acompanhamento e **não** se confunde com o ano-base fiscal
+         *     da Lei do Bem: um relatório mensal não implica nenhum enquadramento nem apuração.
+         */
+        ReportingPeriod: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Timezone
+             * @description Nome IANA, ex.: America/Sao_Paulo
+             */
+            timezone: string;
+            periodicity: components["schemas"]["Periodicity"];
+        };
+        /**
+         * ResearchReportDraft
+         * @description Saída estruturada do perfil `research_report`: relatório individual por período.
+         *
+         *     Sem campos numéricos de horas ou valores: horas só por referência a eventos formais.
+         *
+         *     Pré-condição de schema para resultados: toda evidência citada por um claim `supported`
+         *     da seção `result` precisa estar coberta por algum `ExperimentOutcome`, que declara o
+         *     desfecho explícito (`positive | negative | inconclusive`). Isso **não** garante sozinho que
+         *     nenhum resultado negativo foi omitido: a garantia vem do check determinístico (#9), que
+         *     compara `experiments[]` com os experimentos do período no ledger.
+         *
+         *     `eligibility_note` é fixa (CLAUDE.md, regra 7): o Maker não redige enquadramento.
+         */
+        ResearchReportDraft: {
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Researcher Id
+             * Format: uuid
+             * @description Referência a membro do projeto; nunca inferido
+             */
+            researcher_id: string;
+            period: components["schemas"]["ReportingPeriod"];
+            /** Summary */
+            summary: string;
+            /** Claims */
+            claims: components["schemas"]["ReportClaim"][];
+            /**
+             * Experiments
+             * @default []
+             */
+            experiments: components["schemas"]["ExperimentOutcome"][];
+            /**
+             * Missing
+             * @default []
+             */
+            missing: components["schemas"]["MissingInformation"][];
+            /**
+             * Formal Hours Event Ids
+             * @description Só referências a eventos FORMAL_HOURS_DECLARED
+             * @default []
+             */
+            formal_hours_event_ids: string[];
+            /**
+             * Eligibility Note
+             * @description Nunca afirmar enquadramento definitivo (ADR-0005)
+             * @default Potencialmente qualificável, sujeito a análise dos responsáveis.
+             */
+            eligibility_note: string;
+        };
+        /**
+         * ResolveMissing
+         * @description Encerra uma lacuna de `missing[]` com evidência que a responde.
+         *
+         *     Lacuna `formal_hours` só se resolve por referência a eventos `FORMAL_HOURS_DECLARED`
+         *     (`formal_hours_event_ids`); nunca por número informado no texto. A conferência do tipo do
+         *     evento no ledger é dependência (#9/#39).
+         */
+        ResolveMissing: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "resolve_missing";
+            /**
+             * Missing Id
+             * Format: uuid
+             */
+            missing_id: string;
+            /**
+             * Evidence Ids
+             * @default []
+             */
+            evidence_ids: string[];
+            /**
+             * Formal Hours Event Ids
+             * @default []
+             */
+            formal_hours_event_ids: string[];
+        };
+        /**
+         * ResolvedGap
+         * @description Lacuna de `missing[]` encerrada por uma correção, com as referências que a responderam.
+         */
+        ResolvedGap: {
+            /**
+             * Missing Id
+             * Format: uuid
+             */
+            missing_id: string;
+            /** Field */
+            field: string;
+            /**
+             * Evidence Ids
+             * @default []
+             */
+            evidence_ids: string[];
+            /**
+             * Formal Hours Event Ids
+             * @default []
+             */
+            formal_hours_event_ids: string[];
+        };
+        /**
+         * ReviewDecision
+         * @description Decisão sobre o **texto** de uma versão.
+         *
+         *     `text_approved` confirma redação e fatos daquela versão no papel de quem revisou.
+         *     **Não** é aprovação fiscal, não decide enquadramento e não vale para versões posteriores.
+         * @enum {string}
+         */
+        ReviewDecision: "text_approved" | "changes_requested";
+        /**
+         * ReviewIn
+         * @description Revisão humana de uma versão exata (ação formal, ADR-0005).
+         *
+         *     `correction` só acompanha `changes_requested` e gera a versão N+1; a versão revisada
+         *     é preservada e a aprovação dela não vale para a nova.
+         */
+        ReviewIn: {
+            decision: components["schemas"]["ReviewDecision"];
+            /** Comment */
+            comment?: string | null;
+            correction?: components["schemas"]["CorrectionIn"] | null;
+        };
+        /** ReviewOut */
+        ReviewOut: {
+            review: components["schemas"]["ReportReview"];
+            /**
+             * Evidence Event Id
+             * Format: uuid
+             */
+            evidence_event_id: string;
+            new_version?: components["schemas"]["ReportVersion"] | null;
+        };
+        /**
+         * ReviewState
+         * @enum {string}
+         */
+        ReviewState: "text_approved" | "changes_requested" | "awaiting_review";
+        /**
+         * ReviewerRole
+         * @description Papéis com estado de revisão independente: um não sobrescreve o outro.
+         * @enum {string}
+         */
+        ReviewerRole: "researcher" | "manager";
+        /**
+         * ReviseClaim
+         * @description Substitui o conteúdo da afirmação; a seção e o ID são preservados.
+         */
+        ReviseClaim: {
+            /** Text */
+            text: string;
+            status: components["schemas"]["ClaimStatus"];
+            /**
+             * Evidence Ids
+             * @default []
+             */
+            evidence_ids: string[];
+            /** Question */
+            question?: string | null;
+            /** Ask Role */
+            ask_role?: string | null;
+            /** Dispute Reason */
+            dispute_reason?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "revise_claim";
+            /**
+             * Claim Id
+             * Format: uuid
+             */
+            claim_id: string;
+        };
+        /**
+         * ReviseExperimentOutcome
+         * @description Muda o desfecho declarado de um experimento. Nunca remove o experimento.
+         */
+        ReviseExperimentOutcome: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "revise_experiment_outcome";
+            /**
+             * Experiment Id
+             * Format: uuid
+             */
+            experiment_id: string;
+            outcome: components["schemas"]["ExperimentOutcomeKind"];
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * RoleReview
+         * @description Estado da revisão de um papel sobre a versão atual e o registro que o determinou.
+         */
+        RoleReview: {
+            state: components["schemas"]["ReviewState"];
+            /** Review Id */
+            review_id: string | null;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
+        /**
+         * VersionConflictOut
+         * @description 409: a revisão apontou uma versão que não é a atual; nada foi gravado.
+         */
+        VersionConflictOut: {
+            /** Detail */
+            detail: string;
+            /**
+             * Requested Version Id
+             * Format: uuid
+             */
+            requested_version_id: string;
+            /**
+             * Current Version Id
+             * Format: uuid
+             */
+            current_version_id: string;
+        };
+        /**
+         * WithdrawClaim
+         * @description Retira uma afirmação incorreta; o motivo fica estruturado no registro de mudança.
+         */
+        WithdrawClaim: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "withdraw_claim";
+            /**
+             * Claim Id
+             * Format: uuid
+             */
+            claim_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /** WithdrawnClaim */
+        WithdrawnClaim: {
+            /**
+             * Claim Id
+             * Format: uuid
+             */
+            claim_id: string;
+            /** Reason */
+            reason: string;
         };
     };
     responses: never;
@@ -42,6 +673,85 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_report_version_api_v1_reports__report_version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportVersionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_report_version_api_v1_reports__report_version_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Basho-User-Id"?: string | null;
+                "X-Basho-Role"?: string | null;
+                "X-Basho-Identity-Secret"?: string | null;
+            };
+            path: {
+                report_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionConflictOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;
