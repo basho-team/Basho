@@ -90,3 +90,22 @@ def test_empty_reviewer_identity_secret_means_not_configured(
     monkeypatch.setenv("REVIEWER_IDENTITY_SECRET", "")
 
     assert load_settings().reviewer_identity_secret is None
+
+
+def test_maker_model_defaults_to_opus_with_high_effort(valid_env: dict[str, str]) -> None:
+    # Act
+    settings = load_settings()
+
+    # Assert
+    assert (settings.maker_model, settings.maker_effort) == ("claude-opus-5-5", "high")
+
+
+def test_app_does_not_start_when_maker_and_checker_are_the_same_model(
+    valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange: ADR-0004 exige Checker de outro modelo
+    monkeypatch.setenv("MAKER_MODEL", valid_env["CHECKER_MODEL"].upper())
+
+    # Act / Assert
+    with pytest.raises(ConfigError):
+        load_settings()
