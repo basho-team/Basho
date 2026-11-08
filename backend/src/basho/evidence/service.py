@@ -5,7 +5,7 @@ pertence ao chamador (``tenant_session``): o serviço não faz commit, para que 
 correção e a propagação de ``needs_review`` (#11) possam ocorrer na mesma transação.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -93,6 +93,17 @@ class EvidenceService:
         if row is None:
             raise EvidenceNotFoundError("evento não encontrado neste tenant")
         return _to_event(row)
+
+    async def missing_ids(
+        self, tenant_id: UUID, project_id: UUID, ids: Iterable[UUID]
+    ) -> set[UUID]:
+        """IDs que NÃO existem no ledger do tenant e do projeto (uma única consulta)."""
+        await self._require_session_tenant(tenant_id)
+        wanted = set(ids)
+        if not wanted:
+            return set()
+        found = await self._repository.existing_ids(tenant_id, project_id, sorted(wanted, key=str))
+        return wanted - found
 
     async def query(
         self,

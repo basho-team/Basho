@@ -73,3 +73,20 @@ def test_app_does_not_start_with_invalid_tenant_id(
     # Act / Assert
     with pytest.raises(ConfigError, match="TENANT_ID"):
         create_app()
+
+
+def test_short_reviewer_identity_secret_is_rejected(
+    valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REVIEWER_IDENTITY_SECRET", "curto")
+
+    with pytest.raises(ConfigError, match="REVIEWER_IDENTITY_SECRET"):
+        load_settings()
+
+
+def test_empty_reviewer_identity_secret_means_not_configured(
+    valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REVIEWER_IDENTITY_SECRET", "")
+
+    assert load_settings().reviewer_identity_secret is None

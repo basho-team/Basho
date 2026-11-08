@@ -15,6 +15,7 @@ Interfaces combinadas na hora 0 para que backend, agente e frontend avancem em p
 | Fixtures GitHub sintéticas | `backend/tests/fixtures/github/` | #7, #8, #14 |
 | Exemplo de artefato | `backend/tests/fixtures/activity_record_draft.json` | #9, #12, #13 |
 | Exemplo de relatório do pesquisador | `backend/tests/fixtures/research_report_draft.json` | #9, #12, #38 |
+| Persistência e API de relatórios (`report_versions`, `report_reviews`) | `backend/src/basho/reports/{schemas,service,api}.py` | #39, #42, frontend |
 
 ## 1. Evidence Ledger (ADR-0003)
 - `NewEvidenceEvent` → entrada de `EvidenceService.append`; o serviço calcula `id`, `content_hash` e `created_at`. O `content_hash` é o SHA-256 (hex minúsculo) do JSON canônico (chaves ordenadas, separadores `,`/`:`, UTF-8, sem NaN) do **envelope de conteúdo imutável** — `tenant_id`, `project_id`, `kind`, `source`, `source_ref`, `actor`, `payload`, `supersedes`, `is_synthetic` — e não apenas do payload, para que a adulteração de qualquer desses campos seja detectável. `id` e `created_at` ficam fora do hash. O envelope é montado campo a campo e versionado (`HASH_VERSION`, coluna `hash_version`).
@@ -42,9 +43,24 @@ Tools do MVP: `github_list_commits`, `github_get_pull_request`, `ledger_query_ev
 `ActivityRecordDraft`: `claims[]` por seção (desafio, hipótese, método, resultado, incerteza), cada um com ≥ 1 `evidence_id`; horas/participantes só como **referência** a eventos formais; lacunas em `missing[]` viram pendências com pergunta objetiva; `eligibility_note` nunca afirma enquadramento.
 
 ## 4. Checker (ADR-0004)
-1. `DeterministicChecker.check(artifact, evidence)` — schema, citações existem no mesmo tenant, horas/participantes só de eventos formais, sem afirmação de elegibilidade.
-2. `Verifier.verify(artifact, evidence)` — LLM independente. Padrão: **Featherless** (API compatível com OpenAI; `FEATHERLESS_BASE_URL`, `FEATHERLESS_API_KEY`, `CHECKER_MODEL` — ver #9). Fallback: outro modelo Claude com contexto limpo.
-3. Ambos retornam `VerificationResult(verdict, issues[], unsupported_claims[], checker)`. Códigos de issue sugeridos: `uncited_claim`, `missing_evidence`, `inferred_hours`, `inferred_participant`, `eligibility_assertion`, `prompt_injection`, `contradiction`.
+Implementado em `basho.agent.checks` e `basho.agent.checker` (#9). Vale para `ActivityRecordDraft` e `ResearchReportDraft` (`VerifiableArtifact`).
+
+1. `ReportDeterministicChecker(tenant_id).check(artifact, evidence)`: roda antes de qualquer LLM, sem banco. Qualquer issue `blocker` ou `major` vira `fail`.
+   - `unknown_evidence` (blocker): citação que não está nas evidências do mesmo tenant (inclui outro tenant);
+   - `formal_hours_not_formal` (blocker): `formal_hours_event_ids` que não é `FORMAL_HOURS_DECLARED` de origem `user`/`formal_system`;
+   - `formal_data_in_text` (major): horas ou valores (`120 horas`, `40h`, `R$`) escritos no texto; `%` e `p.p.` são permitidos;
+   - `eligibility_assertion` (blocker): texto afirma elegibilidade ou enquadramento (`eligibility_note` fixa fica de fora);
+   - `prompt_injection` (major): evidência citada contém instrução embutida.
+2. `Verifier.verify(artifact, evidence)`: LLM independente que recebe **só** o artefato e as evidências citadas, envelopadas como `<evidence untrusted="true">` (`build_checker_input`, sem parâmetro para raciocínio do Maker). Prompt versionado em `agent/prompts/checker/v1.md`.
+   - `OpenAICompatibleVerifier`: padrão **Featherless** (`FEATHERLESS_BASE_URL`, `FEATHERLESS_API_KEY`, `CHECKER_MODEL`); trocar de provedor é só config.
+   - `ClaudeVerifier`: fallback com contexto limpo (`claude-sonnet-5-5` por padrão).
+   - Envelope: `< > &` do conteúdo são escapados (não dá para fechar `<evidence>`); citação ausente vira `<evidence missing="true" />`; payload de `FORMAL_HOURS_DECLARED` não vai ao provedor (LGPD).
+   - `ClaudeVerifier` exige `maker_model` e recusa modelo igual ao do Maker.
+   - `pass` com issue `blocker`/`major` ou com `unsupported_claims` vira `fail` (`checker_inconsistent_verdict`); resposta truncada vira `fail` (`checker_truncated`).
+   - `FallbackVerifier`: sem chave, timeout, erro de rede ou HTTP → fallback. Resposta inválida ou recusa **não** cai no fallback: vira `fail` com `checker_invalid_response`/`checker_refused`.
+3. `verify_artifact(...)` → `VerificationOutcome.status`: `draft` (checks falharam; o Maker refaz, máx. 2), `verified` (Checker `pass`) ou `needs_human` (Checker discorda, com as divergências).
+4. `verification_event(...)` monta o `VERIFICATION_RESULT` para `EvidenceService.append`: actor `agent`/`checker` com o modelo usado, payload com `status`, `prompt_version` e os dois resultados.
+5. Ambos retornam `VerificationResult(verdict, issues[], unsupported_claims[], checker)`. Códigos do Checker LLM: `unsupported_by_evidence`, `negative_result_omitted`, `formal_data_in_text`, `eligibility_assertion`, `prompt_injection`, `contradiction` (mesmo vocabulário dos eval cases de relatórios, PR #43). `negative_result_omitted` fica com o Checker até o ledger ter desfecho estruturado de experimento.
 
 ## 5. API HTTP do MVP (prefixo `/api/v1`)
 
@@ -56,6 +72,8 @@ Tools do MVP: `github_list_commits`, `github_get_pull_request`, `ledger_query_ev
 | POST | `/artifacts/{id}/approval` | `ApprovalIn` | **formal, só humano** |
 | GET | `/projects/{id}/dossier` | `DossierEntryOut[]` (inclui `AgentRunMetrics`) | leitura |
 | POST | `/projects/{id}/agent-runs` | dispara job do agente → `{run_id}` | humano |
+| GET | `/reports/{version_id}` | `ReportVersionOut` (versão + status por papel da versão atual) | leitura |
+| POST | `/reports/{version_id}/review` | `ReviewIn` → `ReviewOut` (201); versão que não é a atual → **409** `VersionConflictOut` | **formal, só humano** |
 
 O frontend gera tipos a partir de `/openapi.json` e usa mocks desses schemas até #5 ficar pronta.
 
@@ -75,4 +93,12 @@ O mapa completo está na [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestra
 
 **Execução** (`agent/runs.py`). `AgentRun(id, tenant_id, task_kind, prompt_version, status, correlation_id, parent_run_id, idempotency_key, attempts, max_attempts, created_at, updated_at, error)`. `RunStatus` é estado de execução, **nunca** de conformidade ou revisão. Transições (`ALLOWED_TRANSITIONS`, `can_transition`): `queued → running | failed`; `running → queued` (retry transitório) `| awaiting_input | completed | failed`; `awaiting_input`, `completed` e `failed` são terminais. A resposta humana a `awaiting_input` cria novo run com o mesmo `correlation_id` e `parent_run_id`. Invariantes: `attempts ≤ max_attempts`; `running` exige `attempts ≥ 1`; `failed` exige `RunError(code, message, retryable)` (sem segredos/PII); `completed` e `awaiting_input` sem `error`; `queued` com `error` só se `retryable` e com tentativas restantes; `updated_at ≥ created_at`. Mudança de estado só por `transition_run` / `fail_or_retry`, que revalidam (`model_copy` do Pydantic não valida); `fail_or_retry` decide por código entre retry e `failed`.
 
-Ainda previstos (dados): projeção `report_versions` e persistência de `agent_runs`.
+**Persistência de relatórios** (#39, sobre o domínio de `basho.reports` do PR #43). Tabelas `reporting_periods`, `report_versions` e `report_reviews` (migração `0003`), append-only (trigger + REVOKE), com `tenant_id` e RLS forçada.
+- `report_versions` guarda o `ReportVersion` do domínio: `draft` (JSONB), IDs de item em colunas paralelas (`claim_ids`, `experiment_ids`, `missing_ids`), `change` (`ChangeRecord`, JSONB), `supersedes_id`, `content_hash` (SHA-256 do JSON canônico do draft), `cited_evidence_ids` e `evidence_event_id`.
+- Cada versão é também um evento `activity_record` no ledger, com `supersedes` apontando para o evento da versão anterior. Cada revisão gera `user_confirmation` (`text_approved`) ou `user_correction` (`changes_requested`, com `supersedes` para o evento da versão revisada).
+- `POST /reports/{id}/review`: o domínio (`review_version`) decide; versão que não é a atual → `VersionConflictError` → 409, sem gravar nada. `correction` (só com `changes_requested`) vira `ReportCorrection` → versão N+1; a versão revisada é preservada e a aprovação dela não vale para a nova.
+- Citações são conferidas no ledger (mesmo tenant e projeto); `formal_hours_event_ids` só aceitam `formal_hours_declared`.
+- Identidade do revisor (placeholder até #47): headers `X-Basho-User-Id`/`X-Basho-Role` só valem com `X-Basho-Identity-Secret` igual a `REVIEWER_IDENTITY_SECRET` (segredo do BFF, tempo constante); sem segredo configurado → 503. Eventos de revisão gravam `identity_verified: false`.
+- Privilégios: `basho_worker` cria versões, mas só **lê** `report_reviews` (revisão é ação formal); `basho_api` lê e insere nas três tabelas.
+
+Ainda previsto (dados): persistência de `agent_runs`.
