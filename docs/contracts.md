@@ -142,3 +142,9 @@ O mapa completo está na [ADR-0009](adr/0009-agente-perfis-de-tarefa-e-orquestra
 - Privilégios: `basho_worker` cria versões, mas só **lê** `report_reviews` (revisão é ação formal); `basho_api` lê e insere nas três tabelas.
 
 Ainda previsto (dados): persistência de `agent_runs`.
+
+## 8. Relatórios por projeto/período e consolidação gerencial (#42)
+Todas exigem a identidade do BFF (`current_human`), inclusive as leituras. Período por query (`start`, `end`, `timezone`=America/Sao_Paulo, `periodicity`=monthly).
+- `GET /api/v1/projects/{id}/reports` → versão atual de cada relatório do período (`ReportVersionOut`, com estado de revisão por papel).
+- `POST /api/v1/projects/{id}/reports/auto-draft` → só papel `researcher`, para si mesmo. Rascunho **por regras, sem LLM** (`reports/auto_draft.py`, ator `system:auto-draft:regras-v1`): cada afirmação reproduz e cita uma fonte do próprio pesquisador; hipótese, desfechos de experimentos e horas viram perguntas (`missing[]`/`pending`); horas só por referência a `formal_hours_declared`. Idempotente (devolve o atual se já existir). 404 sem evidência; 403 para outro papel. É o ponto de troca para o Maker (#8) quando houver chave de API.
+- `GET /api/v1/projects/{id}/consolidation` → `{consolidation: ManagerConsolidation | null, summary_markdown}`. **Calculada na leitura** a partir das versões atuais e revisões (não persistida); `consolidation_id` é determinístico sobre as entradas.
