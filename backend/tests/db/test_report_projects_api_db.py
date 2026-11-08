@@ -147,7 +147,7 @@ async def test_empty_period_returns_empty(client: AsyncClient) -> None:
     url = f"/api/v1/projects/{project}"
     assert (await client.get(f"{url}/reports", params=Q, headers=CARLA_H)).json() == []
     empty = (await client.get(f"{url}/consolidation", params=Q, headers=CARLA_H)).json()
-    assert empty == {"consolidation": None, "summary_markdown": None}
+    assert empty == {"consolidation": None, "summary_markdown": None, "needs_review": []}
 
 
 async def test_other_tenant_sees_nothing(
