@@ -178,6 +178,8 @@ export interface ConsolidationOut {
 }
 
 export interface FiscalSource {
+  tenant_id: string;
+  project_id: string;
   reference: string;
   revision: string;
   locator: string;

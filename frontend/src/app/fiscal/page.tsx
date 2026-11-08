@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { periodQuery, personName } from "@/components/basho/hooks";
+import { OriginDetails } from "@/components/basho/fiscal/origin-details";
 import { RequirePersona, Shell } from "@/components/basho/shell";
 import { Badge, Card, Empty, ErrorBox, Loading, Mono } from "@/components/basho/ui";
 import { ApiError, api } from "@/lib/api";
@@ -54,7 +55,7 @@ function FiscalWork({ ctx }: { ctx: DemoContext }) {
                   <td className="p-2">{i.text}<div className="text-xs text-zinc-500">{personName(ctx, i.researcher_id)} · {i.item_kind} <Mono>{short(i.item_id)}</Mono> · versão <Mono>{short(i.version_id)}</Mono></div></td>
                   <td className="p-2 text-xs">
                     {i.sources.length === 0 ? <Badge tone="warn">nenhuma evidência válida</Badge> : (
-                      <ul className="space-y-1">{i.sources.map((s) => <li key={s.reference}><Mono>{s.reference.replace("evidence:", "").slice(0, 8)}</Mono> {s.origin} · <Mono>{s.revision.slice(0, 10)}</Mono><div className="break-all text-zinc-400">{s.locator}</div></li>)}</ul>
+                      <ul className="space-y-1">{i.sources.map((s) => <li key={s.reference}><Mono>{s.reference.replace("evidence:", "").slice(0, 8)}</Mono> {s.origin} · <Mono>{s.revision.slice(0, 10)}</Mono><div className="break-all text-zinc-400">{s.locator}</div><OriginDetails item={i} source={s} /></li>)}</ul>
                     )}
                   </td>
                   <td className="p-2 text-xs text-amber-800">{i.gaps.map((g) => GAP[g] ?? g).join("; ") || "—"}</td>
