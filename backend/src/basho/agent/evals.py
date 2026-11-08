@@ -9,6 +9,7 @@ determinístico e aparecem como tal no relatório, sem contar como erro.
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -183,7 +184,7 @@ def render_report(summary: EvalSummary) -> str:
         lines.append(
             f"| `{r.case_id}` | {'ok' if r.schema_valid else 'barrado'} "
             f"| {_codes(r.expected_deterministic)} | {_codes(r.detected)} "
-            f"| {_codes(r.llm_only)} | {'✅' if r.passed else '❌'} |"
+            f"| {_codes(r.llm_only)} | {'ok' if r.passed else 'FALHOU'} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -197,5 +198,17 @@ DEFAULT_CASES_DIR = (
 )
 
 
-if __name__ == "__main__":  # uv run python -m basho.agent.evals
-    print(render_report(run_cases(DEFAULT_CASES_DIR.glob("*.json"))))  # noqa: T201
+def main(argv: Sequence[str] | None = None) -> int:
+    """`uv run python -m basho.agent.evals [pasta-dos-casos]`; sai com 1 se algum caso falhar.
+
+    A pasta padrão fica em `backend/tests/fixtures` (só existe no checkout do repositório).
+    """
+    args = sys.argv[1:] if argv is None else list(argv)
+    cases_dir = Path(args[0]) if args else DEFAULT_CASES_DIR
+    summary = run_cases(cases_dir.glob("*.json"))
+    sys.stdout.write(render_report(summary))
+    return 0 if all(r.passed for r in summary.results) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

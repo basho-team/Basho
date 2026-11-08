@@ -8,6 +8,7 @@ vocabulário dos eval cases do domínio de relatórios (PR #43).
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -43,7 +44,7 @@ _ELIGIBILITY = re.compile(
     re.IGNORECASE,
 )
 _INJECTION = re.compile(
-    r"(?:ignor(?:e|ar|em)|desconsider(?:e|ar|em))\s+(?:as\s+|todas\s+as\s+|all\s+|the\s+)?"
+    r"(?:ignor(?:e|ar|em)|desconsider(?:e|ar|em)|esque[cç](?:a|am|er)|disregard|forget)\s+(?:as\s+|todas\s+as\s+|all\s+|the\s+)?"
     r"(?:\w+\s+)?(?:instru[cç][oõ]es|instructions|regras|orienta[cç][oõ]es|rules)"
     r"|system\s+prompt|voc[eê]\s+agora\s+[eé]|you\s+are\s+now"
     r"|(?:marque|aprove)m?\s+todas"
@@ -108,9 +109,22 @@ def _strings(value: Any) -> Iterator[str]:
             yield from _strings(item)
 
 
+_INVISIBLE = dict.fromkeys(map(ord, "\u00ad\u200b\u200c\u200d\u2060\ufeff"))
+_CONFUSABLES = str.maketrans(
+    "\u0430\u0435\u043e\u0440\u0441\u0445\u0443\u0456\u0410\u0415\u041e\u0420\u0421\u0425\u0406",
+    "aeopcxyiAEOPCXI",
+)
+"""Cirílico comum que se passa por latino; o NFKC não o converte."""
+
+
+def normalize_for_checks(text: str) -> str:
+    """NFKC, sem caracteres invisíveis e sem homóglifos cirílicos comuns."""
+    return unicodedata.normalize("NFKC", text).translate(_INVISIBLE).translate(_CONFUSABLES)
+
+
 def contains_injection(event: EvidenceEvent) -> bool:
     """Heurística para instrução embutida em conteúdo externo (o conteúdo segue sendo dado)."""
-    return any(_INJECTION.search(text) for text in _strings(event.payload))
+    return any(_INJECTION.search(normalize_for_checks(text)) for text in _strings(event.payload))
 
 
 def _issue(
