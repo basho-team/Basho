@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { activeItem, isActive, NAV_ITEMS } from "@/components/layout/nav";
+import { activeItem, isActive, itemsFor, NAV_ITEMS } from "@/components/layout/nav";
 
 const activeHrefs = (pathname: string) => NAV_ITEMS.filter(item => isActive(item, pathname)).map(item => item.href);
 
@@ -8,7 +8,6 @@ describe("sidebar: um único item ativo", () => {
     ["/", ["/"]],
     ["/pesquisador", ["/pesquisador"]],
     ["/pesquisador/pendencias", ["/pesquisador"]],
-    ["/pesquisador/fontes", ["/pesquisador/fontes"]],
     ["/gerente", ["/gerente"]],
     ["/gerente/pendencias", ["/gerente"]],
     ["/gerente/dossie", ["/gerente"]],
@@ -21,6 +20,12 @@ describe("sidebar: um único item ativo", () => {
 
   test("não casa por prefixo parcial de segmento", () => {
     expect(activeHrefs("/gerente-externo")).toEqual([]);
+  });
+
+  test("pesquisador não vê fontes nem integrações no menu", () => {
+    const hrefs = itemsFor("researcher").map(item => item.href);
+    expect(hrefs).toEqual(["/", "/pesquisador"]);
+    expect(itemsFor("manager").map(item => item.href)).toContain("/integracoes");
   });
 
   test("activeItem concorda com isActive", () => {

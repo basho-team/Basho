@@ -71,4 +71,4 @@ test("cada função é limitada às próprias rotas, inclusive links profundos",
   expect(mayVisit("fiscal", "/gerente")).toBe(false);
   expect(mayVisit("manager", "/fiscal")).toBe(false);
   expect(mayVisit("fiscal", "/integracoes")).toBe(true);
-});
+  expect(mayVisit("researcher", "/integracoes")).toBe(false);});

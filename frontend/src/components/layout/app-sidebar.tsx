@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { cn } from "cn";
 import { BashoLogo } from "@/components/brand/logo";
 import { useDemoUser } from "@/components/auth/session-provider";
-import { NAV_ITEMS, isActive } from "./nav";
+import { itemsFor, isActive } from "./nav";
 
 function SidebarView({ pathname }: { pathname: string | null }) {
   const user = useDemoUser();
@@ -25,7 +25,7 @@ function SidebarView({ pathname }: { pathname: string | null }) {
         aria-label="Papéis"
         className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-1 md:flex-col md:gap-1.5 md:overflow-visible md:px-4 md:pb-0"
       >
-        {NAV_ITEMS.filter(item => !item.role || item.role === user.role).map((item) => {
+        {itemsFor(user.role).map((item) => {
           const active = isActive(item, pathname);
           return (
             <Link
