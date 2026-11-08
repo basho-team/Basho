@@ -8,6 +8,7 @@ não a executa sem decisão humana (ADR-0005).
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime
 from typing import Any
@@ -18,6 +19,9 @@ from basho.agent import simulated_tools as simulated
 from basho.agent.tools import ToolCallStatus, ToolResult, ToolSpec
 from basho.connectors.github.client import GithubClient, GithubError, RepoRef
 from basho.connectors.github.ingest import commit_payload, pull_request_payload
+from basho.logging import get_logger
+
+_log = get_logger(__name__)
 
 
 def _untrusted(payload: object) -> str:
@@ -114,18 +118,38 @@ class GithubCreateIssueTool:
             args = simulated.CreateIssueArgs.model_validate(arguments)
         except ValidationError:
             return _error(self.spec.name, simulated.INVALID_ARGUMENTS)
+        key = issue_idempotency_key(tenant_id, self._repo, args.title, args.body)
         try:
-            created = await self._client.create_issue(self._repo, title=args.title, body=args.body)
+            issue = await self._client.ensure_issue(
+                self._repo, title=args.title, body=args.body, idempotency_key=key
+            )
         except GithubError as exc:
+            _log.warning(
+                "github_create_issue_failed",
+                code=exc.code.value,
+                attempts=exc.attempts,
+                retryable=exc.retryable,
+            )
             return _error(self.spec.name, exc.code.value)
-        number = created.get("number")
-        if not isinstance(number, int):
-            return _error(self.spec.name, "github_invalid_response")
         return ToolResult(
             tool=self.spec.name,
             status=ToolCallStatus.OK,
-            data={"repo": self._repo.full_name, "issue_number": number},
+            data={
+                "repo": self._repo.full_name,
+                "issue_number": issue.number,
+                "already_existed": issue.reused,
+            },
         )
+
+
+def issue_idempotency_key(tenant_id: str, repo: RepoRef, title: str, body: str) -> str:
+    """Chave estável para a mesma intenção (tenant, repo, título, corpo).
+
+    Vem do conteúdo aprovado, não do modelo: reexecutar a tool depois de uma falha, ou reenviar
+    o mesmo pedido, cai na mesma issue em vez de criar outra.
+    """
+    material = "\x00".join((tenant_id, repo.full_name, title, body))
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:32]
 
 
 def build_github_tools(

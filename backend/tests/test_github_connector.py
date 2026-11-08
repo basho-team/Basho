@@ -45,6 +45,7 @@ async def test_list_commits_follows_pagination_and_sends_token_header() -> None:
             True,
         ),
         (httpx.Response(502), GithubErrorCode.HTTP_ERROR, True),
+        (httpx.Response(422), GithubErrorCode.HTTP_ERROR, False),
     ],
 )
 async def test_http_failures_become_stable_codes_without_token(
@@ -151,7 +152,11 @@ async def test_create_issue_tool_calls_github_when_executed_after_approval() -> 
 
     # Assert
     assert result.status is ToolCallStatus.OK
-    assert result.data == {"repo": REPO.full_name, "issue_number": 99}
+    assert result.data == {
+        "repo": REPO.full_name,
+        "issue_number": 99,
+        "already_existed": False,
+    }
     (post,) = [r for r in fake.requests if r.method == "POST"]
     assert post.url.path == f"/repos/{REPO.full_name}/issues"
 
