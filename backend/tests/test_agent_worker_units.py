@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from basho.agent.costs import estimate_cost_usd
@@ -14,6 +15,7 @@ from basho.agent.runs import RunStatus
 from basho.agent.tasks import TaskKind
 from basho.agent.worker import (
     BACKOFF_MAX_SECONDS,
+    github_wiring,
     model_settings_from,
     retry_delay,
 )
@@ -96,3 +98,36 @@ def test_migration_check_values_match_enums() -> None:
     assert set(migration._TASK_KINDS) == {value.value for value in TaskKind}
     # Só os estados que `verify_artifact` produz (o artefato do Maker nunca vira formal aqui)
     assert set(migration._ARTIFACT_STATUSES) <= {value.value for value in ArtifactStatus}
+
+
+@pytest.mark.parametrize(
+    ("token", "repos", "enabled"),
+    [
+        ("ghp_test", {}, False),
+        ("  ", {"00000000-0000-0000-0000-0000000000aa": "org/repo"}, False),
+        ("ghp_test", {"00000000-0000-0000-0000-0000000000aa": "org/repo"}, True),
+    ],
+    ids=["no_repo", "blank_token", "token_and_repo"],
+)
+async def test_github_is_real_only_with_token_and_mapped_repo(
+    token: str, repos: dict[str, str], enabled: bool
+) -> None:
+    # Arrange
+    env = {name.lower(): value for name, value in VALID_ENV.items()}
+    settings = Settings.model_validate(env | {"github_token": token, "github_project_repos": repos})
+
+    # Act
+    async with httpx.AsyncClient() as http:
+        wiring = github_wiring(settings, http)
+
+    # Assert
+    assert (wiring is not None) is enabled
+
+
+def test_invalid_repo_mapping_fails_fast() -> None:
+    env = {name.lower(): value for name, value in VALID_ENV.items()}
+    settings = Settings.model_validate(
+        env | {"github_project_repos": {"00000000-0000-0000-0000-0000000000aa": "../etc"}}
+    )
+    with pytest.raises(ValueError, match="owner/name"):
+        github_wiring(settings, httpx.AsyncClient())

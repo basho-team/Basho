@@ -18,12 +18,13 @@ preso em `running` após queda do processo não é recuperado automaticamente (b
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from basho.agent.checks import ReportDeterministicChecker
@@ -52,6 +53,13 @@ from basho.agent.tasks import ProfileNotAvailableError, get_profile
 from basho.agent.tools import Tool
 from basho.agent.verifier import Verifier
 from basho.config import Settings
+from basho.connectors.github import (
+    GithubClient,
+    GithubError,
+    GithubIngestService,
+    RepoRef,
+    build_github_tools,
+)
 from basho.db import tenant_session
 from basho.logging import get_logger
 
@@ -72,6 +80,26 @@ def model_settings_from(settings: Settings) -> ModelSettings:
     return ModelSettings(model=settings.maker_model, effort=settings.maker_effort)
 
 
+def github_wiring(settings: Settings, http_client: httpx.AsyncClient) -> GithubWiring | None:
+    """GitHub real só com `GITHUB_TOKEN` não vazio e repositório mapeado para algum projeto.
+
+    `RepoRef` valida cada `owner/name` aqui (fail fast no startup).
+    """
+    token = settings.github_token
+    if not token.get_secret_value().strip() or not settings.github_project_repos:
+        return None
+    repos = {project: RepoRef(name) for project, name in settings.github_project_repos.items()}
+    return GithubWiring(client=GithubClient(token=token, http_client=http_client), repos=repos)
+
+
+def _period_start(stored: StoredRun) -> datetime | None:
+    period = stored.task_input.get("period")
+    start = period.get("start") if isinstance(period, Mapping) else None
+    if not isinstance(start, str):
+        return None
+    return datetime.fromisoformat(start).replace(tzinfo=UTC)
+
+
 def retry_delay(attempts: int) -> timedelta:
     """Backoff exponencial com teto: 5 s, 10 s, 20 s... até 5 min."""
     seconds = BACKOFF_BASE_SECONDS * 2 ** max(attempts - 1, 0)
@@ -83,10 +111,22 @@ def _utcnow() -> datetime:
 
 
 @dataclass(frozen=True, slots=True)
+class GithubWiring:
+    """GitHub real (#7): cliente + repositório de cada projeto (`GITHUB_PROJECT_REPOS`)."""
+
+    client: GithubClient
+    repos: Mapping[UUID, RepoRef]
+
+
+@dataclass(frozen=True, slots=True)
 class WorkerConfig:
     tenant_id: UUID
     model: ModelSettings
     github_fixtures: GithubFixtures | None = None
+    github: GithubWiring | None = None
+
+    def repo_for(self, project_id: UUID) -> RepoRef | None:
+        return self.github.repos.get(project_id) if self.github is not None else None
 
 
 class Worker:
@@ -124,6 +164,10 @@ class Worker:
         except (ValueError, ProfileNotAvailableError):
             error = RunError(code=INVALID_TASK, message="tarefa inválida", retryable=False)
             await self._fail(stored, error, MakerResult(MakerStatus.FAILED, (), 0))
+            return stored.run.id
+        sync_error = await self._sync_github(stored)
+        if sync_error is not None:
+            await self._fail(stored, sync_error, MakerResult(MakerStatus.FAILED, (), 0))
             return stored.run.id
         try:
             result = await self._maker(stored, persistence).run(task)
@@ -174,15 +218,53 @@ class Worker:
             settings=self._config.model,
         )
 
+    async def _sync_github(self, stored: StoredRun) -> RunError | None:
+        """Ingere commits/PRs do repositório do projeto no ledger antes do Maker (#7).
+
+        Transação curta e própria (sem LLM); idempotente. Sem repositório configurado, não faz
+        nada. Falha do GitHub vira `RunError` com o código estável do conector.
+        """
+        repo = self._config.repo_for(stored.project_id)
+        github = self._config.github
+        if repo is None or github is None:
+            return None
+        try:
+            async with tenant_session(self._factory, self._config.tenant_id) as session:
+                result = await GithubIngestService(session, github.client).sync(
+                    self._config.tenant_id,
+                    stored.project_id,
+                    repo,
+                    since=_period_start(stored),
+                    is_synthetic=stored.is_synthetic,
+                )
+        except GithubError as exc:
+            message = "falha ao sincronizar o GitHub"
+            return RunError(code=exc.code.value, message=message, retryable=exc.retryable)
+        logger.info(
+            "agent_run_github_synced",
+            run_id=str(stored.run.id),
+            created=result.created,
+            skipped=result.skipped,
+        )
+        return None
+
     def _tools(self, project_id: UUID) -> list[Tool]:
-        """Ledger real; GitHub e registros internos simulados até o #7 e as projeções (#5)."""
+        """Ledger e GitHub reais quando o projeto tem repositório; senão GitHub simulado.
+
+        Registros internos (`ledger_record_draft`, `pending_item_open`) seguem simulados até as
+        projeções (#5). `github_create_issue` é `external`: a policy só pede aprovação.
+        """
         internal = SimulatedInternalStore()
         tools: list[Tool] = [
             SessionLedgerQueryEvents(self._factory, self._config.tenant_id, project_id),
             LedgerRecordDraft(internal),
             PendingItemOpen(internal),
-            GithubCreateIssue(),
         ]
+        repo = self._config.repo_for(project_id)
+        github = self._config.github
+        if repo is not None and github is not None:
+            return [*tools, *build_github_tools(github.client, repo)]
+        tools.append(GithubCreateIssue())
         fixtures = self._config.github_fixtures
         if fixtures is not None:
             tools += [GithubListCommits(fixtures), GithubGetPullRequest(fixtures)]
@@ -277,11 +359,17 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
         if settings.github_fixtures_dir is not None
         else None
     )
+    github_http = httpx.AsyncClient()
     worker = Worker(
         factory=create_session_factory(engine),
         client=client,
         verifier=verifier,
-        config=WorkerConfig(settings.tenant_id, model_settings_from(settings), fixtures),
+        config=WorkerConfig(
+            settings.tenant_id,
+            model_settings_from(settings),
+            fixtures,
+            github=github_wiring(settings, github_http),
+        ),
     )
     logger.info("agent_worker_started")
     try:
@@ -298,6 +386,7 @@ async def run_forever(settings: Settings) -> None:  # pragma: no cover - process
             if processed is None:
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
     finally:
+        await github_http.aclose()
         await engine.dispose()
 
 

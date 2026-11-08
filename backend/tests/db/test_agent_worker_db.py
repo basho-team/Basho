@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import anthropic
+import httpx
 import httpx2
 import psycopg
 import pytest
@@ -28,7 +29,7 @@ from basho.agent.run_service import (
 from basho.agent.run_store import RunStore
 from basho.agent.runs import RunError, RunStatus
 from basho.agent.sessions import PersistenceTransaction
-from basho.agent.worker import Worker, WorkerConfig
+from basho.agent.worker import GithubWiring, Worker, WorkerConfig
 from basho.config import Settings
 from basho.db import (
     API_ROLE,
@@ -44,6 +45,7 @@ from basho.main import create_app
 from conftest import VALID_ENV
 from db_support import drop_login_role, provision_login_role, psycopg_dsn
 from evidence_factories import make_event
+from github_support import REPO, FakeGithub, client_for
 from maker_support import FakeClient, FixedVerifier, final, tool_call
 from report_factories import RESEARCHER, report
 
@@ -568,3 +570,75 @@ async def test_process_role_rejects_a_login_in_both_groups(
         await engine.dispose()
         await api_only.dispose()
         drop_login_role(migrated_ledger_url, login)
+
+
+# --- GitHub real (#7) ------------------------------------------------------------------
+
+
+async def test_worker_syncs_github_and_uses_real_tools_for_mapped_project(
+    session_factory: Factory, worker_session_factory: Factory
+) -> None:
+    # Arrange: projeto mapeado para o repositório (config, nunca o modelo)
+    tenant_id, project_id = uuid4(), uuid4()
+    draft = await _seed(session_factory, tenant_id, project_id)
+    run_id = await _enqueue(session_factory, tenant_id, draft)
+    github = FakeGithub()
+    script = [tool_call("github_list_commits", {}), final(draft.model_dump_json())]
+    client = FakeClient(script)
+    worker = Worker(
+        factory=worker_session_factory,
+        client=client,
+        verifier=FixedVerifier(),
+        config=WorkerConfig(
+            tenant_id=tenant_id,
+            model=ModelSettings(),
+            github=GithubWiring(client=github.client(), repos={project_id: REPO}),
+        ),
+        clock=Clock(),
+    )
+
+    # Act
+    await worker.process_one()
+
+    # Assert
+    details = await _run(session_factory, tenant_id, run_id)
+    assert details.stored.run.status is RunStatus.COMPLETED
+    async with tenant_session(session_factory, tenant_id) as session:
+        stored = await EvidenceService(session).query(tenant_id, project_id=project_id)
+    refs = {event.source_ref for event in stored if event.kind is EventKind.COMMIT_OBSERVED}
+    assert f"{REPO.full_name}@{'a' * 40}" in refs
+    tool_result = client.messages.requests[1]["messages"][-1]["content"][0]
+    assert tool_result["is_error"] is False
+    assert any(r.url.path.endswith("/commits") for r in github.requests)
+
+
+async def test_github_failure_fails_the_run_with_the_connector_code(
+    session_factory: Factory, worker_session_factory: Factory
+) -> None:
+    # Arrange
+    tenant_id, project_id = uuid4(), uuid4()
+    draft = await _seed(session_factory, tenant_id, project_id)
+    run_id = await _enqueue(session_factory, tenant_id, draft)
+    unauthorized = client_for(lambda request: httpx.Response(401, json={"message": "Bad"}))
+    client = FakeClient([])
+    worker = Worker(
+        factory=worker_session_factory,
+        client=client,
+        verifier=FixedVerifier(),
+        config=WorkerConfig(
+            tenant_id=tenant_id,
+            model=ModelSettings(),
+            github=GithubWiring(client=unauthorized, repos={project_id: REPO}),
+        ),
+        clock=Clock(),
+    )
+
+    # Act
+    await worker.process_one()
+
+    # Assert: nenhuma chamada ao LLM; erro estável e sem segredo
+    details = await _run(session_factory, tenant_id, run_id)
+    assert details.stored.run.status is RunStatus.FAILED
+    assert details.stored.run.error is not None
+    assert details.stored.run.error.code == "github_unauthorized"
+    assert client.messages.requests == []

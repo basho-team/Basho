@@ -56,7 +56,10 @@ class Settings(BaseSettings):
     maker_model: str = Field(default="claude-opus-5-5", min_length=1)
     maker_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
     github_fixtures_dir: Path | None = None
-    """Fixtures sintéticas do GitHub para as tools simuladas do worker (até o #7)."""
+    """Fixtures sintéticas do GitHub para as tools simuladas (projeto sem repositório)."""
+    github_project_repos: dict[UUID, str] = Field(default_factory=dict)
+    """`GITHUB_PROJECT_REPOS` (JSON `{project_id: "owner/name"}`): projetos com GitHub real
+    no worker. Projeto fora do mapa usa as tools simuladas (até o projeto guardar o repo)."""
 
     @model_validator(mode="after")
     def _maker_and_checker_differ(self) -> Self:
